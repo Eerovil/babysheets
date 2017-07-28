@@ -135,45 +135,39 @@ public class MyService extends IntentService {
         sendBroadcast(intent);
     }
 
-    private void createNotificationHelper(NotificationCompat.Builder mBuilder, String type, Date[] dates) {
+    private String createNotificationHelper(NotificationCompat.Builder mBuilder, String type, Date[] dates) {
         DateFormat dateFormat = new SimpleDateFormat("HH:mm");
         int icon = (type.equals("feed") ? R.drawable.n_feed : R.drawable.n_sleep);
-        String buttonText = (type.equals("feed") ? "Syöttö" : "Uni");
-        String currentText = (type.equals("feed") ? "Syö " : "Nukkuu ");
-        String currentTitleText = (type.equals("feed") ? "Syö " : "Nukahti ");
-        String endedText = (type.equals("feed") ? "Söi " : "Nukkui ");
-        String endedTitleText = (type.equals("feed") ? "Söi " : "Heräsi ");
+        boolean feed = type.equals("feed");
+        String buttonText = (feed ? "Syöttö" : "Uni");
+        String currentText = (feed ? "Syö " : "Nukkuu ");
+        String endedText = (feed ? "Söi " : "Nukkui ");
         Intent tmpIntent = new Intent();
         String contentText;
-        String contentTitleText;
         String startend;
         if (dates[0].before(dates[1])) {
-            if (type.equals("feed")) {
-                tmpIntent.setAction(FEEDSTART);
-            }else{
-                tmpIntent.setAction(SLEEPSTART);
-            }
-            contentText = endedText + dateFormat.format(dates[0]) +
-                    "-" + dateFormat.format(dates[1]);
-            contentTitleText = endedTitleText + timeDiff(dates[1]);
-            startend = "Start";
+            tmpIntent.setAction(feed ? FEEDSTART : SLEEPSTART);
+
+            contentText = endedText + dateFormat.format(dates[0])
+                    + "-" + dateFormat.format(dates[1]) + " ("
+                    + timeDiff((feed ? dates[0] : dates[1])) + " sitten)";
+            startend = " Start";
 
         } else {
-            if (type.equals("feed")) {
-                tmpIntent.setAction(FEEDEND);
-            }else{
-                tmpIntent.setAction(SLEEPEND);
-            }
+            tmpIntent.setAction(feed ? FEEDEND : SLEEPEND);
             contentText = currentText + dateFormat.format(dates[0]) +
-                    "-...";
-            contentTitleText = currentTitleText + timeDiff(dates[0]);
-            startend = "End";
+                    "-..." + " (" + timeDiff(dates[0]) + " sitten)";
+            startend = " End";
         }
         tmpIntent.addFlags(FLAG_INCLUDE_STOPPED_PACKAGES);
         PendingIntent tmpPendingIntent = PendingIntent.getBroadcast(this, 12345, tmpIntent, PendingIntent.FLAG_UPDATE_CURRENT);
-        mBuilder.addAction(icon, buttonText + " " + startend, tmpPendingIntent);
-        mBuilder.setContentText(mBuilder.mContentText + " " + contentText);
-        mBuilder.setContentTitle(mBuilder.mContentTitle + " " + contentTitleText);
+        mBuilder.addAction(icon, buttonText + startend, tmpPendingIntent);
+        if (feed) {
+            mBuilder.setContentText(contentText);
+        } else {
+            mBuilder.setContentTitle(contentText);
+        }
+        return contentText;
     }
 
     private void createNotification() {
@@ -181,7 +175,6 @@ public class MyService extends IntentService {
         NotificationCompat.Builder mBuilder =
                 new NotificationCompat.Builder(this)
                         .setSmallIcon(R.drawable.n_icon)
-                        .setContentTitle("Baby Sheets")
                         .setContentText("Loading");
 
         // Sets an ID for the notification
@@ -191,7 +184,6 @@ public class MyService extends IntentService {
                 (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
 
         if (lastFeed[0] != null) {
-            mBuilder.setContentText("");
             createNotificationHelper(mBuilder, "feed", lastFeed);
             createNotificationHelper(mBuilder, "sleep", lastSleep);
         }
