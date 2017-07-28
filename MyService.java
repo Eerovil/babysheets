@@ -31,6 +31,7 @@ import java.util.Arrays;
 import java.util.Calendar;
 import java.util.Date;
 import java.util.List;
+import java.util.Locale;
 import java.util.concurrent.TimeUnit;
 
 import static android.app.Notification.PRIORITY_MAX;
@@ -75,7 +76,13 @@ public class MyService extends IntentService {
 
     @Override
     protected void onHandleIntent(@Nullable Intent intent) {
-        String action = intent.getAction();
+        String action = null;
+        try {
+            action = intent.getAction();
+        } catch (Exception e) {
+            e.printStackTrace();
+            return;
+        }
         this.date = new Date();
 
         if (intent.hasExtra("hour") && intent.hasExtra("minute")) {
@@ -116,9 +123,16 @@ public class MyService extends IntentService {
         createNotification();
         if (FEEDSTART.equals(action) ||FEEDEND.equals(action) || SLEEPEND.equals(action) || SLEEPSTART.equals(action)) {
             sheetsAddData(action);
+            refreshMainActivity();
         }
         sheetsGetData();
         createNotification();
+    }
+
+    private void refreshMainActivity() {
+        Intent intent = new Intent();
+        intent.setAction("REFRESH");
+        sendBroadcast(intent);
     }
 
     private void createNotificationHelper(NotificationCompat.Builder mBuilder, String type, Date[] dates) {
@@ -129,10 +143,10 @@ public class MyService extends IntentService {
         String currentTitleText = (type.equals("feed") ? "Syö " : "Nukahti ");
         String endedText = (type.equals("feed") ? "Söi " : "Nukkui ");
         String endedTitleText = (type.equals("feed") ? "Söi " : "Heräsi ");
-        String contentText = "";
-        String contentTitleText = "";
-        String startend = "";
         Intent tmpIntent = new Intent();
+        String contentText;
+        String contentTitleText;
+        String startend;
         if (dates[0].before(dates[1])) {
             if (type.equals("feed")) {
                 tmpIntent.setAction(FEEDSTART);
@@ -171,7 +185,7 @@ public class MyService extends IntentService {
                         .setContentText("Loading");
 
         // Sets an ID for the notification
-        int mNotificationId = 001;
+        int mNotificationId = 1;
         // Gets an instance of the NotificationManager service
         NotificationManager mNotifyMgr =
                 (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
@@ -206,7 +220,7 @@ public class MyService extends IntentService {
 
         long hours = TimeUnit.MILLISECONDS.toHours(diff);
         long minutes = TimeUnit.MILLISECONDS.toMinutes(diff) - 60*hours;
-        String ret = "";
+        String ret;
         ret = minutes + "min";
         if (hours != 0)
             ret = hours + "h " + ret;
@@ -215,7 +229,7 @@ public class MyService extends IntentService {
     }
 
     private void sheetsGetData() {
-        List<String> results = new ArrayList<String>();
+        List<String> results = new ArrayList<>();
         try {
             ValueRange response = mService.spreadsheets().values()
                     .get(SPREADSHEET_ID, SPREADSHEET_GETRANGE)
@@ -238,7 +252,7 @@ public class MyService extends IntentService {
     }
 
     public static Date parseDate(List<Object> obj) {
-        String s = (String) obj.get(0) + " " + (String) obj.get(1);
+        String s = obj.get(0) + " " + obj.get(1);
         s = s.trim();
         SimpleDateFormat dateFormat = new SimpleDateFormat("dd.MM.yyyy HH:mm:ss");
         try {

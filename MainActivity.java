@@ -9,9 +9,11 @@ import android.app.LoaderManager;
 import android.app.Notification;
 import android.app.PendingIntent;
 import android.app.ProgressDialog;
+import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.CursorLoader;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.content.Loader;
 import android.content.SharedPreferences;
 import android.database.Cursor;
@@ -103,6 +105,8 @@ public class MainActivity extends Activity
     private ArrayList<MyListItem> listItems = new ArrayList<>();
     private MyListItemAdapter listAdapter;
 
+    private BroadcastReceiver receiver;
+
 
     /**
      * Create the main activity.
@@ -162,6 +166,17 @@ public class MainActivity extends Activity
         PendingIntent pi = PendingIntent.getBroadcast(this, 0, intent, 0);
         am.set(AlarmManager.RTC_WAKEUP, System.currentTimeMillis() + (1000 * 60 * 5), pi);
 
+        IntentFilter filter = new IntentFilter();
+        filter.addAction("REFRESH");
+
+        receiver = new BroadcastReceiver() {
+            @Override
+            public void onReceive(Context context, Intent intent) {
+                getResultsFromApi();
+            }
+        };
+        registerReceiver(receiver, filter);
+
 
     }
 
@@ -172,6 +187,7 @@ public class MainActivity extends Activity
         refreshNotification();
 
     }
+
 
     private void showData() {
 
@@ -579,6 +595,10 @@ public class MainActivity extends Activity
 
     @Override
     protected void onDestroy() {
+        if (receiver != null) {
+            unregisterReceiver(receiver);
+            receiver = null;
+        }
         super.onDestroy();
     }
 }
