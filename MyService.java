@@ -62,8 +62,7 @@ public class MyService extends IntentService {
     private Date[] lastSleep = new Date[2];
 
     private RemoteViews contentView;
-    private RemoteViews contentViewBig;
-    private Notification.Builder mBuilder;
+    private NotificationCompat.Builder mBuilder;
 
 
     public static final String SPREADSHEET_ID = "19AkAs2dAkvHyvd3NR0Jpo5doqZBAJwEmK3hG5P-NE9A";
@@ -225,7 +224,6 @@ public class MyService extends IntentService {
         if (contentView == null) {
             init = true;
             contentView = new RemoteViews(getPackageName(), R.layout.custom_push);
-            contentViewBig = new RemoteViews(getPackageName(), R.layout.custom_push_big);
             contentView.setImageViewResource(R.id.b_refresh, R.drawable.ic_refresh);
         }
         Log.d(TAG, "createNotification, init = " + init);
@@ -248,28 +246,23 @@ public class MyService extends IntentService {
         }
         if (init) {
             Intent getDataReceive = new Intent();
-            getDataReceive.setAction(REFRESH);
+            getDataReceive.setAction(GETDATA);
             getDataReceive.addFlags(FLAG_INCLUDE_STOPPED_PACKAGES);
             PendingIntent pendingIntentGetData = PendingIntent.getBroadcast(this, 12345, getDataReceive, PendingIntent.FLAG_UPDATE_CURRENT);
-            Notification.Action refreshAction = new Notification.Action.Builder(
-                    Icon.createWithResource(this, R.drawable.ic_refresh),
-                    "Refresh",
-                    pendingIntentGetData).build();
-            //contentView.setOnClickPendingIntent(R.id.b_refresh, pendingIntentGetData);
+            contentView.setOnClickPendingIntent(R.id.b_refresh, pendingIntentGetData);
 
             Intent notificationIntent = new Intent(this, MainActivity.class);
             notificationIntent.setFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP
                     | Intent.FLAG_ACTIVITY_SINGLE_TOP);
             PendingIntent intent = PendingIntent.getActivity(this, 0,
                     notificationIntent, 0);
-            mBuilder = new Notification.Builder(this)
+            mBuilder = new NotificationCompat.Builder(this)
                     .setAutoCancel(false)
                     .setPriority(PRIORITY_MAX)
                     .setContentIntent(intent)
                     .setOngoing(true)
                     .setSmallIcon(R.drawable.n_icon)
-                    .addAction(refreshAction)
-                    .setStyle(new Notification.MediaStyle());
+                    .setContent(contentView);
         }
 
 
