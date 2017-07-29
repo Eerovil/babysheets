@@ -1,10 +1,13 @@
 package com.eerovil.babysheets;
 
 import android.app.IntentService;
+import android.app.Notification;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.content.Context;
 import android.content.Intent;
+import android.content.SharedPreferences;
+import android.graphics.drawable.Icon;
 import android.support.annotation.Nullable;
 import android.support.v4.app.NotificationCompat;
 import android.util.Log;
@@ -36,10 +39,13 @@ import java.util.concurrent.TimeUnit;
 import static android.app.Notification.PRIORITY_MAX;
 import static android.content.ContentValues.TAG;
 import static android.content.Intent.FLAG_INCLUDE_STOPPED_PACKAGES;
+import static com.eerovil.babysheets.MainActivity.PREF;
 import static com.eerovil.babysheets.MainActivity.PREF_FIREBASE_TOKEN;
 
 
 public class MyService extends IntentService {
+    private static final String TAG = "MyService";
+
     public static final String FEEDSTART = "com.eerovil.babysheets.FEEDSTART";
     public static final String FEEDEND = "com.eerovil.babysheets.FEEDEND";
     public static final String SLEEPSTART = "com.eerovil.babysheets.SLEEPSTART";
@@ -56,7 +62,8 @@ public class MyService extends IntentService {
     private Date[] lastSleep = new Date[2];
 
     private RemoteViews contentView;
-    private NotificationCompat.Builder mBuilder;
+    private RemoteViews contentViewBig;
+    private Notification.Builder mBuilder;
 
 
     public static final String SPREADSHEET_ID = "19AkAs2dAkvHyvd3NR0Jpo5doqZBAJwEmK3hG5P-NE9A";
@@ -101,42 +108,47 @@ public class MyService extends IntentService {
             }
         }
 
-        Log.v("babysheets","Service " + action);
+        Log.d(TAG,"Service " + action);
 
-        if (REFRESH.equals(action)) {
-            updateNotificationTime();
-            return;
+        if (!REFRESH.equals(action)) {
+
+            mCredential = GoogleAccountCredential.usingOAuth2(
+                    getApplicationContext(), Arrays.asList(SCOPES))
+                    .setBackOff(new ExponentialBackOff());
+
+            String accountName = getSharedPreferences(PREF, Context.MODE_PRIVATE)
+                    .getString(PREF_ACCOUNT_NAME, null);
+
+            Log.v("babysheets", "Using account " + accountName);
+
+            if (accountName == null)
+                return;
+
+            mCredential.setSelectedAccountName(accountName);
+
+            HttpTransport transport = AndroidHttp.newCompatibleTransport();
+            JsonFactory jsonFactory = JacksonFactory.getDefaultInstance();
+            mService = new com.google.api.services.sheets.v4.Sheets.Builder(
+                    transport, jsonFactory, mCredential)
+                    .setApplicationName("Google Sheets API Android Quickstart")
+                    .build();
+
+            lastFeed[0] = null;
+            createNotification();
         }
 
-        mCredential = GoogleAccountCredential.usingOAuth2(
-                getApplicationContext(), Arrays.asList(SCOPES))
-                .setBackOff(new ExponentialBackOff());
-
-        String accountName = getSharedPreferences(PREF, Context.MODE_PRIVATE)
-                .getString(PREF_ACCOUNT_NAME, null);
-
-        Log.v("babysheets","Using account " + accountName);
-
-        if (accountName == null)
-            return;
-
-        mCredential.setSelectedAccountName(accountName);
-
-        HttpTransport transport = AndroidHttp.newCompatibleTransport();
-        JsonFactory jsonFactory = JacksonFactory.getDefaultInstance();
-        mService = new com.google.api.services.sheets.v4.Sheets.Builder(
-                transport, jsonFactory, mCredential)
-                .setApplicationName("Google Sheets API Android Quickstart")
-                .build();
-
-        lastFeed[0] = null;
-        createNotification();
         if (FEEDSTART.equals(action) ||FEEDEND.equals(action) || SLEEPEND.equals(action) || SLEEPSTART.equals(action)) {
             sheetsAddData(action);
             refreshMainActivity();
             sendFirebase(this);
         }
-        sheetsGetData();
+
+        if (REFRESH.equals(action)) {
+            loadData();
+        } else {
+            sheetsGetData();
+        }
+
         createNotification();
     }
 
@@ -157,7 +169,6 @@ public class MyService extends IntentService {
         } else {
             Log.e(TAG, "Error sending firebase: NO TOKEN");
         }
-
     }
 
     private String createNotificationHelper(boolean init, RemoteViews contentView, String type, Date[] dates) {
@@ -166,12 +177,10 @@ public class MyService extends IntentService {
         int button = (feed ? R.id.b_feed : R.id.b_sleep);
         int text_ago = (feed ? R.id.feed_ago : R.id.sleep_ago);
         int textview = (feed ? R.id.title : R.id.text);
-        String buttonText = (feed ? "Syöttö" : "Uni");
         String currentText = (feed ? "Syö " : "Nukkuu ");
         String endedText = (feed ? "Söi " : "Nukkui ");
         Intent tmpIntent = new Intent();
         String contentText;
-        String startend;
         if (dates[0].before(dates[1])) {
             tmpIntent.setAction(feed ? FEEDSTART : SLEEPSTART);
             contentView.setImageViewResource(button, R.drawable.ic_play);
@@ -181,7 +190,6 @@ public class MyService extends IntentService {
 
             contentView.setTextViewText(text_ago, " ("
                     + timeDiff((feed ? dates[0] : dates[1])) + " sitten)");
-            startend = " Start";
 
         } else {
             tmpIntent.setAction(feed ? FEEDEND : SLEEPEND);
@@ -191,7 +199,6 @@ public class MyService extends IntentService {
 
             contentView.setTextViewText(text_ago, " (" + timeDiff(dates[0]) + " sitten)");
 
-            startend = " End";
         }
 
         tmpIntent.addFlags(FLAG_INCLUDE_STOPPED_PACKAGES);
@@ -211,24 +218,14 @@ public class MyService extends IntentService {
         return PendingIntent.getBroadcast(context, 0, intent, 0);
     }
 
-    private void updateNotificationTime() {
-        // Sets an ID for the notification
-        int mNotificationId = 1;
-        // Gets an instance of the NotificationManager service
-        NotificationManager mNotifyMgr =
-                (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
-        contentView.setTextViewText(R.id.feed_ago, " ("
-                + timeDiff(lastFeed[0]) + " sitten)");
-        contentView.setTextViewText(R.id.sleep_ago, " ("
-                + timeDiff(lastSleep[1]) + " sitten)");
-        mNotifyMgr.notify(mNotificationId, mBuilder.build());
-    }
+
 
     private void createNotification() {
         boolean init = false;
         if (contentView == null) {
             init = true;
             contentView = new RemoteViews(getPackageName(), R.layout.custom_push);
+            contentViewBig = new RemoteViews(getPackageName(), R.layout.custom_push_big);
             contentView.setImageViewResource(R.id.b_refresh, R.drawable.ic_refresh);
         }
         Log.d(TAG, "createNotification, init = " + init);
@@ -251,23 +248,28 @@ public class MyService extends IntentService {
         }
         if (init) {
             Intent getDataReceive = new Intent();
-            getDataReceive.setAction(GETDATA);
+            getDataReceive.setAction(REFRESH);
             getDataReceive.addFlags(FLAG_INCLUDE_STOPPED_PACKAGES);
             PendingIntent pendingIntentGetData = PendingIntent.getBroadcast(this, 12345, getDataReceive, PendingIntent.FLAG_UPDATE_CURRENT);
-            contentView.setOnClickPendingIntent(R.id.b_refresh, pendingIntentGetData);
+            Notification.Action refreshAction = new Notification.Action.Builder(
+                    Icon.createWithResource(this, R.drawable.ic_refresh),
+                    "Refresh",
+                    pendingIntentGetData).build();
+            //contentView.setOnClickPendingIntent(R.id.b_refresh, pendingIntentGetData);
 
             Intent notificationIntent = new Intent(this, MainActivity.class);
             notificationIntent.setFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP
                     | Intent.FLAG_ACTIVITY_SINGLE_TOP);
             PendingIntent intent = PendingIntent.getActivity(this, 0,
                     notificationIntent, 0);
-            mBuilder = new NotificationCompat.Builder(this)
+            mBuilder = new Notification.Builder(this)
                     .setAutoCancel(false)
                     .setPriority(PRIORITY_MAX)
                     .setContentIntent(intent)
                     .setOngoing(true)
                     .setSmallIcon(R.drawable.n_icon)
-                    .setContent(contentView);
+                    .addAction(refreshAction)
+                    .setStyle(new Notification.MediaStyle());
         }
 
 
@@ -301,7 +303,7 @@ public class MyService extends IntentService {
                 lastFeed[1] = parseDate(values.get(1));
                 lastSleep[0] = parseDate(values.get(2));
                 lastSleep[1] = parseDate(values.get(3));
-
+                saveData();
                 Log.v("babysheets","lastFeed[0 " + lastFeed[0]);
                 Log.v("babysheets","lastFeed[1 " + lastFeed[1]);
                 Log.v("babysheets","lastSleep[0 " + lastSleep[0]);
@@ -310,6 +312,26 @@ public class MyService extends IntentService {
         }catch (IOException e) {
             Log.e("babysheets",e.toString());
         }
+    }
+
+    private void saveData() {
+        SharedPreferences settings =
+                getSharedPreferences(PREF, Context.MODE_PRIVATE);
+        SharedPreferences.Editor editor = settings.edit();
+        editor.putLong("lastFeedStart", lastFeed[0].getTime());
+        editor.putLong("lastFeedEnd", lastFeed[1].getTime());
+        editor.putLong("lastSleepStart", lastSleep[0].getTime());
+        editor.putLong("lastSleepEnd", lastSleep[1].getTime());
+        editor.apply();
+    }
+
+    private void loadData() {
+        SharedPreferences p = getSharedPreferences(PREF,Context.MODE_PRIVATE);
+
+        lastFeed[0] = new Date(p.getLong("lastFeedStart", 0));
+        lastFeed[1] = new Date(p.getLong("lastFeedEnd", 0));
+        lastSleep[0] = new Date(p.getLong("lastSleepStart", 0));
+        lastSleep[1] = new Date(p.getLong("lastSleepEnd", 0));
     }
 
     public static Date parseDate(List<Object> obj) {

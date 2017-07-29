@@ -18,6 +18,7 @@ import static com.eerovil.babysheets.MainActivity.PREF_FIREBASE_TOKEN;
  */
 
 public class FirebaseInstance extends FirebaseInstanceIdService {
+    private static final String TAG = "FirebaseInstance";
 
     @Override
     public void onTokenRefresh() {

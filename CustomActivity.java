@@ -18,6 +18,7 @@ import static com.eerovil.babysheets.MyService.SLEEPSTART;
 
 
 public class CustomActivity extends AppCompatActivity {
+    private static final String TAG = "CustomActivity";
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {

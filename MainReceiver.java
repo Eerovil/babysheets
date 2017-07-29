@@ -5,16 +5,19 @@ import android.content.Context;
 import android.content.Intent;
 import android.util.Log;
 
+import static android.content.ContentValues.TAG;
 import static com.eerovil.babysheets.MyService.CUSTOM;
+import static com.eerovil.babysheets.MyService.REFRESH;
 
 public class MainReceiver extends BroadcastReceiver {
-
+    private static final String TAG = "MainReceiver";
 
 
     @Override
     public void onReceive(Context context, Intent intent) {
         Log.v("babysheets","I Arrived!!!!");
         String action = intent.getAction();
+        Log.d(TAG, "Recieved intent " + action);
         if (action.equals(CUSTOM)) {
             Intent c = new Intent(context, CustomActivity.class);
             context.startActivity(c);

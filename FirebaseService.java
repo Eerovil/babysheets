@@ -15,6 +15,7 @@ import static com.eerovil.babysheets.MainActivity.PREF_FIREBASE_TOKEN;
 import static com.eerovil.babysheets.MyService.GETDATA;
 
 public class FirebaseService extends FirebaseMessagingService {
+    private static final String TAG = "FirebaseService";
     public FirebaseService() {
     }
 

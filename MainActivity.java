@@ -5,27 +5,20 @@ import android.accounts.AccountManager;
 import android.app.Activity;
 import android.app.AlarmManager;
 import android.app.Dialog;
-import android.app.LoaderManager;
 import android.app.Notification;
 import android.app.PendingIntent;
 import android.app.ProgressDialog;
 import android.content.BroadcastReceiver;
 import android.content.Context;
-import android.content.CursorLoader;
 import android.content.Intent;
 import android.content.IntentFilter;
-import android.content.Loader;
 import android.content.SharedPreferences;
-import android.database.Cursor;
 import android.net.ConnectivityManager;
 import android.net.NetworkInfo;
 import android.os.AsyncTask;
 import android.os.Bundle;
-import android.provider.ContactsContract;
-import android.support.annotation.Dimension;
 import android.support.annotation.NonNull;
 import android.support.design.widget.FloatingActionButton;
-import android.text.method.ScrollingMovementMethod;
 import android.util.Log;
 import android.view.ContextMenu;
 import android.view.LayoutInflater;
@@ -36,9 +29,7 @@ import android.view.ViewGroup;
 import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
 import android.widget.Button;
-import android.widget.LinearLayout;
 import android.widget.ListView;
-import android.widget.SimpleCursorAdapter;
 import android.widget.TextView;
 
 import com.google.android.gms.common.ConnectionResult;
@@ -53,14 +44,10 @@ import com.google.api.client.util.ExponentialBackOff;
 import com.google.api.services.sheets.v4.SheetsScopes;
 import com.google.api.services.sheets.v4.model.BatchUpdateSpreadsheetRequest;
 import com.google.api.services.sheets.v4.model.BatchUpdateSpreadsheetResponse;
-import com.google.api.services.sheets.v4.model.BatchUpdateValuesRequest;
-import com.google.api.services.sheets.v4.model.BatchUpdateValuesResponse;
 import com.google.api.services.sheets.v4.model.DeleteDimensionRequest;
 import com.google.api.services.sheets.v4.model.DimensionRange;
 import com.google.api.services.sheets.v4.model.Request;
 import com.google.api.services.sheets.v4.model.ValueRange;
-import com.google.firebase.database.DatabaseReference;
-import com.google.firebase.database.FirebaseDatabase;
 import com.google.firebase.iid.FirebaseInstanceId;
 import com.google.firebase.messaging.FirebaseMessaging;
 
@@ -78,7 +65,6 @@ import pub.devrel.easypermissions.EasyPermissions;
 
 import static com.eerovil.babysheets.MyService.GETDATA;
 import static com.eerovil.babysheets.MyService.REFRESH;
-import static com.eerovil.babysheets.MyService.SPREADSHEET_GETRANGE;
 import static com.eerovil.babysheets.MyService.SPREADSHEET_ID;
 import static com.eerovil.babysheets.MyService.SPREADSHEET_RANGE;
 import static com.eerovil.babysheets.MyService.parseDate;
@@ -171,15 +157,16 @@ public class MainActivity extends Activity
 
         refreshNotification();
 
-        AlarmManager am=(AlarmManager)getSystemService(ALARM_SERVICE);
-        Intent intent = new Intent(this, MainReceiver.class);
+        /*AlarmManager am = (AlarmManager) getSystemService(ALARM_SERVICE);
+        Intent intent = new Intent(this, MyService.class);
         intent.setAction(REFRESH);
-        PendingIntent pi = PendingIntent.getBroadcast(this, 0, intent, 0);
-        am.set(AlarmManager.RTC_WAKEUP, System.currentTimeMillis() + (1000 * 60 * 1), pi);
+        long frequency= 60 * 1000; // in ms
+        PendingIntent piLoop = PendingIntent.getService(this, 0, intent, PendingIntent.FLAG_CANCEL_CURRENT);
+        am.setRepeating(AlarmManager.RTC_WAKEUP, System.currentTimeMillis(), frequency, piLoop);
+        Log.d(TAG, "Set repeating alarm every " + frequency + " ms");*/
 
         IntentFilter filter = new IntentFilter();
         filter.addAction("REFRESH");
-
         receiver = new BroadcastReceiver() {
             @Override
             public void onReceive(Context context, Intent intent) {
