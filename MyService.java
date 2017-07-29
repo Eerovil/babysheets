@@ -171,45 +171,55 @@ public class MyService extends IntentService {
         }
     }
 
-    private String createNotificationHelper(boolean init, RemoteViews contentView, String type, Date[] dates) {
+    private Notification.Action createNotificationHelper(Notification.Builder mBuilder, String type, Date[] dates) {
         DateFormat dateFormat = new SimpleDateFormat("HH:mm");
         boolean feed = type.equals("feed");
         int button = (feed ? R.id.b_feed : R.id.b_sleep);
         int text_ago = (feed ? R.id.feed_ago : R.id.sleep_ago);
         int textview = (feed ? R.id.title : R.id.text);
+        int image;
         String currentText = (feed ? "Syö " : "Nukkuu ");
         String endedText = (feed ? "Söi " : "Nukkui ");
+        String buttonText = (feed ? "Syöttö " : "Uni ");
         Intent tmpIntent = new Intent();
         String contentText;
         if (dates[0].before(dates[1])) {
             tmpIntent.setAction(feed ? FEEDSTART : SLEEPSTART);
-            contentView.setImageViewResource(button, R.drawable.ic_play);
+            //contentView.setImageViewResource(button, R.drawable.ic_play);
+            image = R.drawable.ic_play;
 
             contentText = endedText + dateFormat.format(dates[0])
                     + "-" + dateFormat.format(dates[1]);
 
-            contentView.setTextViewText(text_ago, " ("
-                    + timeDiff((feed ? dates[0] : dates[1])) + " sitten)");
+            //contentView.setTextViewText(text_ago, " ("
+            //        + timeDiff((feed ? dates[0] : dates[1])) + " sitten)");
 
         } else {
             tmpIntent.setAction(feed ? FEEDEND : SLEEPEND);
-            contentView.setImageViewResource(button, R.drawable.ic_stop);
+            image = R.drawable.ic_stop;
+            //contentView.setImageViewResource(button, R.drawable.ic_stop);
             contentText = currentText + dateFormat.format(dates[0]) +
                     "-...";
 
-            contentView.setTextViewText(text_ago, " (" + timeDiff(dates[0]) + " sitten)");
+            //contentView.setTextViewText(text_ago, " (" + timeDiff(dates[0]) + " sitten)");
 
         }
 
         tmpIntent.addFlags(FLAG_INCLUDE_STOPPED_PACKAGES);
         PendingIntent tmpPendingIntent = PendingIntent.getBroadcast(this, 12345, tmpIntent, PendingIntent.FLAG_UPDATE_CURRENT);
+        Notification.Action tmpAction = new Notification.Action.Builder(
+                Icon.createWithResource(this, image),
+                buttonText,
+                tmpPendingIntent).build();
         if (feed) {
-            contentView.setOnClickPendingIntent(R.id.b_feed, tmpPendingIntent);
+            //contentView.setOnClickPendingIntent(R.id.b_feed, tmpPendingIntent);
+            mBuilder.setContentTitle(contentText);
         } else {
-            contentView.setOnClickPendingIntent(R.id.b_sleep, tmpPendingIntent);
+            //contentView.setOnClickPendingIntent(R.id.b_sleep, tmpPendingIntent);
+            mBuilder.setContentText(contentText);
         }
-        contentView.setTextViewText(textview, contentText);
-        return contentText;
+        //contentView.setTextViewText(textview, contentText);
+        return tmpAction;
     }
 
     protected PendingIntent getPendingSelfIntent(Context context, String action) {
@@ -221,14 +231,15 @@ public class MyService extends IntentService {
 
 
     private void createNotification() {
-        boolean init = false;
-        if (contentView == null) {
-            init = true;
-            contentView = new RemoteViews(getPackageName(), R.layout.custom_push);
-            contentViewBig = new RemoteViews(getPackageName(), R.layout.custom_push_big);
-            contentView.setImageViewResource(R.id.b_refresh, R.drawable.ic_refresh);
-        }
-        Log.d(TAG, "createNotification, init = " + init);
+        Notification.Action feedAction;
+        Notification.Action sleepAction;
+        Notification.Action refreshAction;
+
+        mBuilder = new Notification.Builder(this)
+                .setSmallIcon(R.drawable.n_icon)
+                .setAutoCancel(false)
+                .setPriority(PRIORITY_MAX)
+                .setOngoing(true);;
 
 
         // Sets an ID for the notification
@@ -238,40 +249,45 @@ public class MyService extends IntentService {
                 (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
 
         if (lastFeed[0] != null) {
-            createNotificationHelper(init, contentView, "feed", lastFeed);
-            createNotificationHelper(init, contentView, "sleep", lastSleep);
+            mBuilder.addAction(createNotificationHelper(mBuilder, "feed", lastFeed));
+            mBuilder.addAction(createNotificationHelper(mBuilder, "sleep", lastSleep));
         } else {
-            contentView.setTextViewText(R.id.title, "Loading...");
+            mBuilder.setContentTitle("Loading...");
+            /*contentView.setTextViewText(R.id.title, "Loading...");
             contentView.setTextViewText(R.id.text, "");
             contentView.setTextViewText(R.id.feed_ago, "");
-            contentView.setTextViewText(R.id.sleep_ago, "");
+            contentView.setTextViewText(R.id.sleep_ago, "");*/
         }
-        if (init) {
-            Intent getDataReceive = new Intent();
-            getDataReceive.setAction(REFRESH);
-            getDataReceive.addFlags(FLAG_INCLUDE_STOPPED_PACKAGES);
-            PendingIntent pendingIntentGetData = PendingIntent.getBroadcast(this, 12345, getDataReceive, PendingIntent.FLAG_UPDATE_CURRENT);
-            Notification.Action refreshAction = new Notification.Action.Builder(
-                    Icon.createWithResource(this, R.drawable.ic_refresh),
-                    "Refresh",
-                    pendingIntentGetData).build();
-            //contentView.setOnClickPendingIntent(R.id.b_refresh, pendingIntentGetData);
+        Intent getDataReceive = new Intent();
+        getDataReceive.setAction(REFRESH);
+        getDataReceive.addFlags(FLAG_INCLUDE_STOPPED_PACKAGES);
+        PendingIntent pendingIntentGetData = PendingIntent.getBroadcast(this, 12345, getDataReceive, PendingIntent.FLAG_UPDATE_CURRENT);
+        refreshAction = new Notification.Action.Builder(
+                Icon.createWithResource(this, R.drawable.ic_refresh),
+                "Refresh",
+                pendingIntentGetData).build();
+        //contentView.setOnClickPendingIntent(R.id.b_refresh, pendingIntentGetData);
 
-            Intent notificationIntent = new Intent(this, MainActivity.class);
-            notificationIntent.setFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP
-                    | Intent.FLAG_ACTIVITY_SINGLE_TOP);
-            PendingIntent intent = PendingIntent.getActivity(this, 0,
-                    notificationIntent, 0);
-            mBuilder = new Notification.Builder(this)
-                    .setAutoCancel(false)
-                    .setPriority(PRIORITY_MAX)
-                    .setContentIntent(intent)
-                    .setOngoing(true)
-                    .setSmallIcon(R.drawable.n_icon)
+        Intent notificationIntent = new Intent(this, MainActivity.class);
+        notificationIntent.setFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP
+                | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+        PendingIntent intent = PendingIntent.getActivity(this, 0,
+                notificationIntent, 0);
+        mBuilder.setContentIntent(intent);
+
+
+
+
+        if (lastFeed[0] == null) {
+            mBuilder.addAction(refreshAction)
+                    .setStyle(new Notification.MediaStyle()
+                    .setShowActionsInCompactView(0));
+        } else {
+            mBuilder
                     .addAction(refreshAction)
-                    .setStyle(new Notification.MediaStyle());
+                    .setStyle(new Notification.MediaStyle()
+                    .setShowActionsInCompactView(0, 1, 2));
         }
-
 
         mNotifyMgr.notify(mNotificationId, mBuilder.build());
 
