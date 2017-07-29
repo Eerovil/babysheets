@@ -5,22 +5,22 @@ import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.content.Context;
 import android.content.Intent;
-import android.os.IBinder;
 import android.support.annotation.Nullable;
 import android.support.v4.app.NotificationCompat;
 import android.util.Log;
+import android.widget.RemoteViews;
 
 import com.google.api.client.extensions.android.http.AndroidHttp;
 import com.google.api.client.googleapis.extensions.android.gms.auth.GoogleAccountCredential;
-import com.google.api.client.googleapis.extensions.android.gms.auth.UserRecoverableAuthIOException;
 import com.google.api.client.http.HttpTransport;
 import com.google.api.client.json.JsonFactory;
 import com.google.api.client.json.jackson2.JacksonFactory;
 import com.google.api.client.util.ExponentialBackOff;
 import com.google.api.services.sheets.v4.SheetsScopes;
 import com.google.api.services.sheets.v4.model.AppendValuesResponse;
-import com.google.api.services.sheets.v4.model.UpdateValuesResponse;
 import com.google.api.services.sheets.v4.model.ValueRange;
+import com.google.firebase.database.DatabaseReference;
+import com.google.firebase.database.FirebaseDatabase;
 
 import java.io.IOException;
 import java.text.DateFormat;
@@ -31,11 +31,12 @@ import java.util.Arrays;
 import java.util.Calendar;
 import java.util.Date;
 import java.util.List;
-import java.util.Locale;
 import java.util.concurrent.TimeUnit;
 
 import static android.app.Notification.PRIORITY_MAX;
+import static android.content.ContentValues.TAG;
 import static android.content.Intent.FLAG_INCLUDE_STOPPED_PACKAGES;
+import static com.eerovil.babysheets.MainActivity.PREF_FIREBASE_TOKEN;
 
 
 public class MyService extends IntentService {
@@ -45,6 +46,7 @@ public class MyService extends IntentService {
     public static final String SLEEPEND = "com.eerovil.babysheets.SLEEPEND";
     public static final String GETDATA = "com.eerovil.babysheets.GETDATA";
     public static final String CUSTOM = "com.eerovil.babysheets.CUSTOM";
+    public static final String REFRESH = "com.eerovil.babysheets.REFRESH";
 
     public static final String BUNDLECREDENTIAL = "mCredential";
 
@@ -52,6 +54,9 @@ public class MyService extends IntentService {
 
     private Date[] lastFeed = new Date[2];
     private Date[] lastSleep = new Date[2];
+
+    private RemoteViews contentView;
+    private NotificationCompat.Builder mBuilder;
 
 
     public static final String SPREADSHEET_ID = "19AkAs2dAkvHyvd3NR0Jpo5doqZBAJwEmK3hG5P-NE9A";
@@ -98,6 +103,11 @@ public class MyService extends IntentService {
 
         Log.v("babysheets","Service " + action);
 
+        if (REFRESH.equals(action)) {
+            updateNotificationTime();
+            return;
+        }
+
         mCredential = GoogleAccountCredential.usingOAuth2(
                 getApplicationContext(), Arrays.asList(SCOPES))
                 .setBackOff(new ExponentialBackOff());
@@ -124,6 +134,7 @@ public class MyService extends IntentService {
         if (FEEDSTART.equals(action) ||FEEDEND.equals(action) || SLEEPEND.equals(action) || SLEEPSTART.equals(action)) {
             sheetsAddData(action);
             refreshMainActivity();
+            sendFirebase(this);
         }
         sheetsGetData();
         createNotification();
@@ -135,10 +146,26 @@ public class MyService extends IntentService {
         sendBroadcast(intent);
     }
 
-    private String createNotificationHelper(NotificationCompat.Builder mBuilder, String type, Date[] dates) {
+    public static void sendFirebase(Context context) {
+        String token = context.getSharedPreferences(PREF,Context.MODE_PRIVATE)
+                .getString(PREF_FIREBASE_TOKEN, null);
+        if (token != null) {
+            DatabaseReference mDatabase = FirebaseDatabase.getInstance().getReference("updates");
+            mDatabase.child(token).setValue("updated");
+            Log.d(TAG, "Sent firebase with token " + token);
+
+        } else {
+            Log.e(TAG, "Error sending firebase: NO TOKEN");
+        }
+
+    }
+
+    private String createNotificationHelper(boolean init, RemoteViews contentView, String type, Date[] dates) {
         DateFormat dateFormat = new SimpleDateFormat("HH:mm");
-        int icon = (type.equals("feed") ? R.drawable.n_feed : R.drawable.n_sleep);
         boolean feed = type.equals("feed");
+        int button = (feed ? R.id.b_feed : R.id.b_sleep);
+        int text_ago = (feed ? R.id.feed_ago : R.id.sleep_ago);
+        int textview = (feed ? R.id.title : R.id.text);
         String buttonText = (feed ? "Syöttö" : "Uni");
         String currentText = (feed ? "Syö " : "Nukkuu ");
         String endedText = (feed ? "Söi " : "Nukkui ");
@@ -147,35 +174,65 @@ public class MyService extends IntentService {
         String startend;
         if (dates[0].before(dates[1])) {
             tmpIntent.setAction(feed ? FEEDSTART : SLEEPSTART);
+            contentView.setImageViewResource(button, R.drawable.ic_play);
 
             contentText = endedText + dateFormat.format(dates[0])
-                    + "-" + dateFormat.format(dates[1]) + " ("
-                    + timeDiff((feed ? dates[0] : dates[1])) + " sitten)";
+                    + "-" + dateFormat.format(dates[1]);
+
+            contentView.setTextViewText(text_ago, " ("
+                    + timeDiff((feed ? dates[0] : dates[1])) + " sitten)");
             startend = " Start";
 
         } else {
             tmpIntent.setAction(feed ? FEEDEND : SLEEPEND);
+            contentView.setImageViewResource(button, R.drawable.ic_stop);
             contentText = currentText + dateFormat.format(dates[0]) +
-                    "-..." + " (" + timeDiff(dates[0]) + " sitten)";
+                    "-...";
+
+            contentView.setTextViewText(text_ago, " (" + timeDiff(dates[0]) + " sitten)");
+
             startend = " End";
         }
+
         tmpIntent.addFlags(FLAG_INCLUDE_STOPPED_PACKAGES);
         PendingIntent tmpPendingIntent = PendingIntent.getBroadcast(this, 12345, tmpIntent, PendingIntent.FLAG_UPDATE_CURRENT);
-        mBuilder.addAction(icon, buttonText + startend, tmpPendingIntent);
         if (feed) {
-            mBuilder.setContentText(contentText);
+            contentView.setOnClickPendingIntent(R.id.b_feed, tmpPendingIntent);
         } else {
-            mBuilder.setContentTitle(contentText);
+            contentView.setOnClickPendingIntent(R.id.b_sleep, tmpPendingIntent);
         }
+        contentView.setTextViewText(textview, contentText);
         return contentText;
     }
 
-    private void createNotification() {
+    protected PendingIntent getPendingSelfIntent(Context context, String action) {
+        Intent intent = new Intent(context, getClass());
+        intent.setAction(action);
+        return PendingIntent.getBroadcast(context, 0, intent, 0);
+    }
 
-        NotificationCompat.Builder mBuilder =
-                new NotificationCompat.Builder(this)
-                        .setSmallIcon(R.drawable.n_icon)
-                        .setContentText("Loading");
+    private void updateNotificationTime() {
+        // Sets an ID for the notification
+        int mNotificationId = 1;
+        // Gets an instance of the NotificationManager service
+        NotificationManager mNotifyMgr =
+                (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
+        contentView.setTextViewText(R.id.feed_ago, " ("
+                + timeDiff(lastFeed[0]) + " sitten)");
+        contentView.setTextViewText(R.id.sleep_ago, " ("
+                + timeDiff(lastSleep[1]) + " sitten)");
+        mNotifyMgr.notify(mNotificationId, mBuilder.build());
+    }
+
+    private void createNotification() {
+        boolean init = false;
+        if (contentView == null) {
+            init = true;
+            contentView = new RemoteViews(getPackageName(), R.layout.custom_push);
+            contentView.setImageViewResource(R.id.b_refresh, R.drawable.ic_refresh);
+        }
+        Log.d(TAG, "createNotification, init = " + init);
+
 
         // Sets an ID for the notification
         int mNotificationId = 1;
@@ -184,23 +241,35 @@ public class MyService extends IntentService {
                 (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
 
         if (lastFeed[0] != null) {
-            createNotificationHelper(mBuilder, "feed", lastFeed);
-            createNotificationHelper(mBuilder, "sleep", lastSleep);
+            createNotificationHelper(init, contentView, "feed", lastFeed);
+            createNotificationHelper(init, contentView, "sleep", lastSleep);
+        } else {
+            contentView.setTextViewText(R.id.title, "Loading...");
+            contentView.setTextViewText(R.id.text, "");
+            contentView.setTextViewText(R.id.feed_ago, "");
+            contentView.setTextViewText(R.id.sleep_ago, "");
+        }
+        if (init) {
+            Intent getDataReceive = new Intent();
+            getDataReceive.setAction(GETDATA);
+            getDataReceive.addFlags(FLAG_INCLUDE_STOPPED_PACKAGES);
+            PendingIntent pendingIntentGetData = PendingIntent.getBroadcast(this, 12345, getDataReceive, PendingIntent.FLAG_UPDATE_CURRENT);
+            contentView.setOnClickPendingIntent(R.id.b_refresh, pendingIntentGetData);
+
+            Intent notificationIntent = new Intent(this, MainActivity.class);
+            notificationIntent.setFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP
+                    | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+            PendingIntent intent = PendingIntent.getActivity(this, 0,
+                    notificationIntent, 0);
+            mBuilder = new NotificationCompat.Builder(this)
+                    .setAutoCancel(false)
+                    .setPriority(PRIORITY_MAX)
+                    .setContentIntent(intent)
+                    .setOngoing(true)
+                    .setSmallIcon(R.drawable.n_icon)
+                    .setContent(contentView);
         }
 
-        Intent getDataReceive = new Intent();
-        getDataReceive.setAction(GETDATA);
-        getDataReceive.addFlags(FLAG_INCLUDE_STOPPED_PACKAGES);
-        PendingIntent pendingIntentGetData = PendingIntent.getBroadcast(this, 12345, getDataReceive, PendingIntent.FLAG_UPDATE_CURRENT);
-        mBuilder.addAction(R.drawable.n_refresh, "Refresh", pendingIntentGetData);
-
-        Intent notificationIntent = new Intent(this, MainActivity.class);
-        notificationIntent.setFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP
-                | Intent.FLAG_ACTIVITY_SINGLE_TOP);
-        PendingIntent intent = PendingIntent.getActivity(this, 0,
-                notificationIntent, 0);
-        mBuilder.setContentIntent(intent);
-        mBuilder.setPriority(PRIORITY_MAX);
 
         mNotifyMgr.notify(mNotificationId, mBuilder.build());
 

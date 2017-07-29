@@ -35,6 +35,7 @@ public class CustomActivity extends AppCompatActivity {
                 in.setAction(FEEDSTART);
                 in.putExtra("hour", timePicker.getHour());
                 in.putExtra("minute", timePicker.getMinute());
+                view.getContext().startService(in);
                 finish();
             }
         });

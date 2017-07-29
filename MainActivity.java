@@ -59,6 +59,10 @@ import com.google.api.services.sheets.v4.model.DeleteDimensionRequest;
 import com.google.api.services.sheets.v4.model.DimensionRange;
 import com.google.api.services.sheets.v4.model.Request;
 import com.google.api.services.sheets.v4.model.ValueRange;
+import com.google.firebase.database.DatabaseReference;
+import com.google.firebase.database.FirebaseDatabase;
+import com.google.firebase.iid.FirebaseInstanceId;
+import com.google.firebase.messaging.FirebaseMessaging;
 
 import java.io.IOException;
 import java.text.SimpleDateFormat;
@@ -73,10 +77,12 @@ import pub.devrel.easypermissions.AfterPermissionGranted;
 import pub.devrel.easypermissions.EasyPermissions;
 
 import static com.eerovil.babysheets.MyService.GETDATA;
+import static com.eerovil.babysheets.MyService.REFRESH;
 import static com.eerovil.babysheets.MyService.SPREADSHEET_GETRANGE;
 import static com.eerovil.babysheets.MyService.SPREADSHEET_ID;
 import static com.eerovil.babysheets.MyService.SPREADSHEET_RANGE;
 import static com.eerovil.babysheets.MyService.parseDate;
+import static com.eerovil.babysheets.MyService.sendFirebase;
 
 public class MainActivity extends Activity
         implements EasyPermissions.PermissionCallbacks {
@@ -97,8 +103,9 @@ public class MainActivity extends Activity
     public static final String TAG = "MainActivity";
 
     private static final String BUTTON_TEXT = "Call Google Sheets API";
-    private static final String PREF_ACCOUNT_NAME = "accountName";
-    private static final String PREF = "pref";
+    public static final String PREF_ACCOUNT_NAME = "accountName";
+    public static final String PREF_FIREBASE_TOKEN = "firebasetoken";
+    public static final String PREF = "pref";
     private static final String[] SCOPES = { SheetsScopes.SPREADSHEETS };
 
     private ListView listMain;
@@ -106,6 +113,8 @@ public class MainActivity extends Activity
     private MyListItemAdapter listAdapter;
 
     private BroadcastReceiver receiver;
+
+    private Context context;
 
 
     /**
@@ -117,6 +126,8 @@ public class MainActivity extends Activity
         super.onCreate(savedInstanceState);
 
         setContentView(R.layout.activity_main);
+
+        context = this;
 
 
         Log.v(TAG,"Log start");
@@ -162,9 +173,9 @@ public class MainActivity extends Activity
 
         AlarmManager am=(AlarmManager)getSystemService(ALARM_SERVICE);
         Intent intent = new Intent(this, MainReceiver.class);
-        intent.setAction(GETDATA);
+        intent.setAction(REFRESH);
         PendingIntent pi = PendingIntent.getBroadcast(this, 0, intent, 0);
-        am.set(AlarmManager.RTC_WAKEUP, System.currentTimeMillis() + (1000 * 60 * 5), pi);
+        am.set(AlarmManager.RTC_WAKEUP, System.currentTimeMillis() + (1000 * 60 * 1), pi);
 
         IntentFilter filter = new IntentFilter();
         filter.addAction("REFRESH");
@@ -176,6 +187,20 @@ public class MainActivity extends Activity
             }
         };
         registerReceiver(receiver, filter);
+
+
+        FirebaseMessaging.getInstance().subscribeToTopic("updates");
+        String token = getSharedPreferences(PREF,Context.MODE_PRIVATE)
+                .getString(PREF_FIREBASE_TOKEN, null);
+        if (token == null) {
+            token = FirebaseInstanceId.getInstance().getToken();
+            SharedPreferences settings =
+                    getSharedPreferences(PREF, Context.MODE_PRIVATE);
+            SharedPreferences.Editor editor = settings.edit();
+            editor.putString(PREF_FIREBASE_TOKEN, token);
+            editor.apply();
+        }
+        Log.d(TAG, "Firebase token is " + token);
 
 
     }
@@ -404,12 +429,14 @@ public class MainActivity extends Activity
                 listAdapter.notifyDataSetChanged();
                 refreshNotification();
                 hideLoading();
+                sendFirebase(context);
             }
         };
         Integer[] row = {listItems.get(id.intValue()).position, id.intValue()};
         showLoading("Poistetaan...");
         task.execute(row);
     }
+
 
 
 
