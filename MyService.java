@@ -269,10 +269,11 @@ public class MyService extends IntentService {
         mNotifyMgr.notify(mNotificationId, mBuilder.build());
 
     }
-
-    private String timeDiff(Date d1) {
-        Date now = new Date();
-        long diff = now.getTime() - d1.getTime();//as given
+    public static String timeDiff(Date d1) {
+        return timeDiff(d1, new Date());
+    }
+    public static String timeDiff(Date d1, Date d2) {
+        long diff = d2.getTime() - d1.getTime();//as given
 
         long hours = TimeUnit.MILLISECONDS.toHours(diff);
         long minutes = TimeUnit.MILLISECONDS.toMinutes(diff) - 60*hours;

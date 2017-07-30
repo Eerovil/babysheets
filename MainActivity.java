@@ -13,6 +13,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.SharedPreferences;
+import android.graphics.Color;
 import android.net.ConnectivityManager;
 import android.net.NetworkInfo;
 import android.os.AsyncTask;
@@ -69,6 +70,7 @@ import static com.eerovil.babysheets.MyService.SPREADSHEET_ID;
 import static com.eerovil.babysheets.MyService.SPREADSHEET_RANGE;
 import static com.eerovil.babysheets.MyService.parseDate;
 import static com.eerovil.babysheets.MyService.sendFirebase;
+import static com.eerovil.babysheets.MyService.timeDiff;
 
 public class MainActivity extends Activity
         implements EasyPermissions.PermissionCallbacks {
@@ -285,6 +287,20 @@ public class MainActivity extends Activity
 
                 }
                 Collections.sort(listItems, new ListCompare());
+                Date lastFeed = null;
+                Date lastSleep = null;
+                for (MyListItem item : listItems) {
+                    if (item.type.contains("feed")){
+                        if (lastFeed != null)
+                            item.setTimeSince(lastFeed);
+                        lastFeed = item.date;
+                    }
+                    if (item.type.contains("sleep")){
+                        if (lastSleep != null)
+                            item.setTimeSince(lastFeed);
+                        lastSleep = item.date;
+                    }
+                }
                 listAdapter.notifyDataSetChanged();
                 hideLoading();
             }
@@ -313,11 +329,15 @@ public class MainActivity extends Activity
         public String type;
         public Date date;
         public int position;
+        public String timesince;
 
         public MyListItem(int position, Date date, String type) {
             this.date = date;
             this.type = type;
             this.position = position;
+        }
+        public void setTimeSince(Date last) {
+            this.timesince = timeDiff(last, this.date);
         }
     }
 
@@ -337,14 +357,21 @@ public class MainActivity extends Activity
             // Lookup view for data population
             TextView tvDate = (TextView) convertView.findViewById(R.id.date);
             TextView tvType = (TextView) convertView.findViewById(R.id.type);
+            TextView tvSince = (TextView) convertView.findViewById(R.id.timesince);
             // Populate the data into the template view using the data object
             tvDate.setText(dateFormat.format(item.date));
-            String typeText = item.type.replace("feedstart","Syöttö Alku");
+            String typeText = item.type;
+            if (typeText.contains("feed"))
+                tvType.setTextColor(Color.parseColor("#BA0000"));
+            if (typeText.contains("sleep"))
+                tvType.setTextColor(Color.parseColor("#00BA00"));
+            typeText = typeText.replace("feedstart","Syöttö Alku");
             typeText = typeText.replace("feedend", "Syöttö Loppu");
             typeText = typeText.replace("feed", "Syöttö");
             typeText = typeText.replace("sleepstart", "Nukahti");
             typeText = typeText.replace("sleepend", "Heräsi");
             tvType.setText(typeText);
+            tvSince.setText(item.timesince);
             // Return the completed view to render on screen
             return convertView;
         }
@@ -362,12 +389,18 @@ public class MainActivity extends Activity
     public boolean onContextItemSelected(MenuItem item) {
         AdapterView.AdapterContextMenuInfo info = (AdapterView.AdapterContextMenuInfo) item.getMenuInfo();
         switch (item.getItemId()) {
+            case R.id.edit:
+                editItem(info.id);
+                return true;
             case R.id.delete:
                 deleteItem(info.id);
                 return true;
             default:
                 return super.onContextItemSelected(item);
         }
+    }
+    private void editItem(Long id) {
+
     }
 
     private void deleteItem(Long id) {
