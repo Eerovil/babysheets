@@ -1,13 +1,14 @@
 package com.eerovil.babysheets;
 
 import android.app.IntentService;
-import android.app.Notification;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
+import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
-import android.graphics.drawable.Icon;
+import android.os.AsyncTask;
+import android.os.IBinder;
 import android.support.annotation.Nullable;
 import android.support.v4.app.NotificationCompat;
 import android.util.Log;
@@ -32,18 +33,17 @@ import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Calendar;
+import java.util.Collections;
 import java.util.Date;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 
 import static android.app.Notification.PRIORITY_MAX;
-import static android.content.ContentValues.TAG;
 import static android.content.Intent.FLAG_INCLUDE_STOPPED_PACKAGES;
-import static com.eerovil.babysheets.MainActivity.PREF;
 import static com.eerovil.babysheets.MainActivity.PREF_FIREBASE_TOKEN;
 
 
-public class MyService extends IntentService {
+public class MyService extends Service {
     private static final String TAG = "MyService";
 
     public static final String FEEDSTART = "com.eerovil.babysheets.FEEDSTART";
@@ -53,102 +53,101 @@ public class MyService extends IntentService {
     public static final String GETDATA = "com.eerovil.babysheets.GETDATA";
     public static final String CUSTOM = "com.eerovil.babysheets.CUSTOM";
     public static final String REFRESH = "com.eerovil.babysheets.REFRESH";
+    public static final String STARTSERVICE = "com.eerovil.babysheets.STARTSERVICE";
 
     public static final String BUNDLECREDENTIAL = "mCredential";
 
-    private GoogleAccountCredential mCredential;
-
-    private Date[] lastFeed = new Date[2];
-    private Date[] lastSleep = new Date[2];
+    private final Date[] lastFeed = new Date[2];
+    private final Date[] lastSleep = new Date[2];
 
     private RemoteViews contentView;
     private NotificationCompat.Builder mBuilder;
+    private NotificationManager mNotifyMgr;
+    private int mNotificationId = 1;
 
+    public static boolean IS_SERVICE_RUNNING = false;
 
     public static final String SPREADSHEET_ID = "19AkAs2dAkvHyvd3NR0Jpo5doqZBAJwEmK3hG5P-NE9A";
     public static final String SPREADSHEET_RANGE = "tietokanta!A1:F";
-    public static final String SPREADSHEET_GETRANGE = "uusimmat!A2:F5";
+    private static final String SPREADSHEET_GETRANGE = "uusimmat!A2:F5";
     private static final String[] SCOPES = { SheetsScopes.SPREADSHEETS };
 
     private static final String PREF_ACCOUNT_NAME = "accountName";
     private static final String PREF = "pref";
+    private String action;
+    private Context context;
 
     private Date date;
 
     private com.google.api.services.sheets.v4.Sheets mService;
 
-    public MyService() {
-        super("MyService");
-    }
+    private void startForeground() {
+        context = this;
+        GoogleAccountCredential mCredential = GoogleAccountCredential.usingOAuth2(
+                getApplicationContext(), Arrays.asList(SCOPES))
+                .setBackOff(new ExponentialBackOff());
 
-    public MyService(String name) {
-        super(name);
+        String accountName = getSharedPreferences(PREF, Context.MODE_PRIVATE)
+                .getString(PREF_ACCOUNT_NAME, null);
+
+        Log.d(TAG, "Using account " + accountName);
+
+        if (accountName == null) {
+            Log.e(TAG, "No accountname specified");
+            stopSelf();
+            return;
+        }
+
+        mCredential.setSelectedAccountName(accountName);
+
+        HttpTransport transport = AndroidHttp.newCompatibleTransport();
+        JsonFactory jsonFactory = JacksonFactory.getDefaultInstance();
+        mService = new com.google.api.services.sheets.v4.Sheets.Builder(
+                transport, jsonFactory, mCredential)
+                .setApplicationName("Google Sheets API Android Quickstart")
+                .build();
+
+
+        createNotification();
+        IS_SERVICE_RUNNING = true;
     }
 
     @Override
-    protected void onHandleIntent(@Nullable Intent intent) {
-        String action = null;
-        try {
-            action = intent.getAction();
-        } catch (Exception e) {
-            e.printStackTrace();
-            return;
-        }
-        this.date = new Date();
+    public int onStartCommand(Intent intent, int flags, int startId) {
+        action = intent.getAction();
+        if (STARTSERVICE.equals(action)) {
+            startForeground();
+        } else if (IS_SERVICE_RUNNING) {
+            this.date = new Date();
 
-        if (intent.hasExtra("hour") && intent.hasExtra("minute")) {
-            Calendar calendar = Calendar.getInstance();
-            calendar.set( Calendar.HOUR_OF_DAY, intent.getIntExtra("hour",0) );
-            calendar.set( Calendar.MINUTE, intent.getIntExtra("minute",0) );
-            this.date = calendar.getTime();
-            if ((new Date()).before(this.date)) {
-                calendar.add(Calendar.DAY_OF_MONTH, -1);
+            if (intent.hasExtra("hour") && intent.hasExtra("minute")) {
+                Calendar calendar = Calendar.getInstance();
+                calendar.set(Calendar.HOUR_OF_DAY, intent.getIntExtra("hour", 0));
+                calendar.set(Calendar.MINUTE, intent.getIntExtra("minute", 0));
                 this.date = calendar.getTime();
+                if ((new Date()).before(this.date)) {
+                    calendar.add(Calendar.DAY_OF_MONTH, -1);
+                    this.date = calendar.getTime();
+                }
+            }
+
+            Log.d(TAG, "Service " + action);
+
+            if (!REFRESH.equals(action)) {
+                //Loading notification
+                lastFeed[0] = null;
+                updateNotification();
+            }
+
+            if (FEEDSTART.equals(action) || FEEDEND.equals(action) || SLEEPEND.equals(action) || SLEEPSTART.equals(action)) {
+                sheetsAddData(action);
+            } else if (!REFRESH.equals(action) || lastFeed[0] == null) {
+                sheetsGetData();
+            } else {
+                updateNotification();
             }
         }
-
-        Log.d(TAG,"Service " + action);
-
-        if (!REFRESH.equals(action)) {
-
-            mCredential = GoogleAccountCredential.usingOAuth2(
-                    getApplicationContext(), Arrays.asList(SCOPES))
-                    .setBackOff(new ExponentialBackOff());
-
-            String accountName = getSharedPreferences(PREF, Context.MODE_PRIVATE)
-                    .getString(PREF_ACCOUNT_NAME, null);
-
-            Log.v("babysheets", "Using account " + accountName);
-
-            if (accountName == null)
-                return;
-
-            mCredential.setSelectedAccountName(accountName);
-
-            HttpTransport transport = AndroidHttp.newCompatibleTransport();
-            JsonFactory jsonFactory = JacksonFactory.getDefaultInstance();
-            mService = new com.google.api.services.sheets.v4.Sheets.Builder(
-                    transport, jsonFactory, mCredential)
-                    .setApplicationName("Google Sheets API Android Quickstart")
-                    .build();
-
-            lastFeed[0] = null;
-            createNotification();
-        }
-
-        if (FEEDSTART.equals(action) ||FEEDEND.equals(action) || SLEEPEND.equals(action) || SLEEPSTART.equals(action)) {
-            sheetsAddData(action);
-            refreshMainActivity();
-            sendFirebase(this);
-        }
-
-        if (REFRESH.equals(action)) {
-            loadData();
-        } else {
-            sheetsGetData();
-        }
-
-        createNotification();
+        return START_STICKY;
     }
 
     private void refreshMainActivity() {
@@ -170,7 +169,7 @@ public class MyService extends IntentService {
         }
     }
 
-    private String createNotificationHelper(boolean init, RemoteViews contentView, String type, Date[] dates) {
+    private String createNotificationHelper(RemoteViews contentView, String type, Date[] dates) {
         DateFormat dateFormat = new SimpleDateFormat("HH:mm");
         boolean feed = type.equals("feed");
         int button = (feed ? R.id.b_feed : R.id.b_sleep);
@@ -219,57 +218,72 @@ public class MyService extends IntentService {
 
 
 
+
+
+
     private void createNotification() {
-        boolean init = false;
-        if (contentView == null) {
-            init = true;
-            contentView = new RemoteViews(getPackageName(), R.layout.custom_push);
-            contentView.setImageViewResource(R.id.b_refresh, R.drawable.ic_refresh);
-        }
-        Log.d(TAG, "createNotification, init = " + init);
+        contentView = new RemoteViews(getPackageName(), R.layout.custom_push);
+        contentView.setImageViewResource(R.id.b_refresh, R.drawable.ic_refresh);
+
+        Log.d(TAG, "createNotification, init = true");
 
 
-        // Sets an ID for the notification
-        int mNotificationId = 1;
+
         // Gets an instance of the NotificationManager service
-        NotificationManager mNotifyMgr =
-                (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
+        mNotifyMgr = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
+
+        contentView.setTextViewText(R.id.title, "Loading...");
+        contentView.setTextViewText(R.id.text, "");
+        contentView.setTextViewText(R.id.feed_ago, "");
+        contentView.setTextViewText(R.id.sleep_ago, "");
+
+        Intent getDataReceive = new Intent();
+        getDataReceive.setAction(GETDATA);
+        getDataReceive.addFlags(FLAG_INCLUDE_STOPPED_PACKAGES);
+        PendingIntent pendingIntentGetData = PendingIntent.getBroadcast(this, 12345, getDataReceive, PendingIntent.FLAG_UPDATE_CURRENT);
+        contentView.setOnClickPendingIntent(R.id.b_refresh, pendingIntentGetData);
+
+        Intent refreshReceive = new Intent();
+        refreshReceive.setAction(REFRESH);
+        refreshReceive.addFlags(FLAG_INCLUDE_STOPPED_PACKAGES);
+        PendingIntent pendingIntentRefresh = PendingIntent.getBroadcast(this, 12345, refreshReceive, PendingIntent.FLAG_UPDATE_CURRENT);
+        contentView.setOnClickPendingIntent(R.id.textContainer, pendingIntentRefresh);
+
+        Intent notificationIntent = new Intent(this, MainActivity.class);
+        notificationIntent.setFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP
+                | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+        PendingIntent intent = PendingIntent.getActivity(this, 0,
+                notificationIntent, 0);
+        mBuilder = new NotificationCompat.Builder(this)
+                .setAutoCancel(false)
+                .setPriority(PRIORITY_MAX)
+                .setContentIntent(intent)
+                .setOngoing(true)
+                .setSmallIcon(R.drawable.n_icon)
+                .setContent(contentView);
+
+        //mNotifyMgr.notify(mNotificationId, mBuilder.build());
+        startForeground(mNotificationId, mBuilder.build());
+        Log.d(TAG, "Started foreground");
+
+    }
+    private void updateNotification() {
+        Log.d(TAG, "createNotification, init = false");
 
         if (lastFeed[0] != null) {
-            createNotificationHelper(init, contentView, "feed", lastFeed);
-            createNotificationHelper(init, contentView, "sleep", lastSleep);
+            createNotificationHelper(contentView, "feed", lastFeed);
+            createNotificationHelper(contentView, "sleep", lastSleep);
         } else {
             contentView.setTextViewText(R.id.title, "Loading...");
             contentView.setTextViewText(R.id.text, "");
             contentView.setTextViewText(R.id.feed_ago, "");
             contentView.setTextViewText(R.id.sleep_ago, "");
         }
-        if (init) {
-            Intent getDataReceive = new Intent();
-            getDataReceive.setAction(GETDATA);
-            getDataReceive.addFlags(FLAG_INCLUDE_STOPPED_PACKAGES);
-            PendingIntent pendingIntentGetData = PendingIntent.getBroadcast(this, 12345, getDataReceive, PendingIntent.FLAG_UPDATE_CURRENT);
-            contentView.setOnClickPendingIntent(R.id.b_refresh, pendingIntentGetData);
-
-            Intent notificationIntent = new Intent(this, MainActivity.class);
-            notificationIntent.setFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP
-                    | Intent.FLAG_ACTIVITY_SINGLE_TOP);
-            PendingIntent intent = PendingIntent.getActivity(this, 0,
-                    notificationIntent, 0);
-            mBuilder = new NotificationCompat.Builder(this)
-                    .setAutoCancel(false)
-                    .setPriority(PRIORITY_MAX)
-                    .setContentIntent(intent)
-                    .setOngoing(true)
-                    .setSmallIcon(R.drawable.n_icon)
-                    .setContent(contentView);
-        }
-
 
         mNotifyMgr.notify(mNotificationId, mBuilder.build());
 
     }
-    public static String timeDiff(Date d1) {
+    private static String timeDiff(Date d1) {
         return timeDiff(d1, new Date());
     }
     public static String timeDiff(Date d1, Date d2) {
@@ -286,29 +300,41 @@ public class MyService extends IntentService {
     }
 
     private void sheetsGetData() {
-        List<String> results = new ArrayList<>();
-        try {
-            ValueRange response = mService.spreadsheets().values()
-                    .get(SPREADSHEET_ID, SPREADSHEET_GETRANGE)
-                    .execute();
-            List<List<Object>> values = response.getValues();
-            if (values != null) {
-                lastFeed[0] = parseDate(values.get(0));
-                lastFeed[1] = parseDate(values.get(1));
-                lastSleep[0] = parseDate(values.get(2));
-                lastSleep[1] = parseDate(values.get(3));
-                saveData();
-                Log.v("babysheets","lastFeed[0 " + lastFeed[0]);
-                Log.v("babysheets","lastFeed[1 " + lastFeed[1]);
-                Log.v("babysheets","lastSleep[0 " + lastSleep[0]);
-                Log.v("babysheets","lastSleep[1 " + lastSleep[1]);
+        AsyncTask<Void, Void, Void> task = new AsyncTask<Void, Void, Void>() {
+
+            @Override
+            protected Void doInBackground(Void... params) {
+                List<String> results = new ArrayList<>();
+                try {
+                    ValueRange response = mService.spreadsheets().values()
+                            .get(SPREADSHEET_ID, SPREADSHEET_GETRANGE)
+                            .execute();
+                    List<List<Object>> values = response.getValues();
+                    if (values != null) {
+                        lastFeed[0] = parseDate(values.get(0));
+                        lastFeed[1] = parseDate(values.get(1));
+                        lastSleep[0] = parseDate(values.get(2));
+                        lastSleep[1] = parseDate(values.get(3));
+                        Log.v("babysheets", "lastFeed[0 " + lastFeed[0]);
+                        Log.v("babysheets", "lastFeed[1 " + lastFeed[1]);
+                        Log.v("babysheets", "lastSleep[0 " + lastSleep[0]);
+                        Log.v("babysheets", "lastSleep[1 " + lastSleep[1]);
+                    }
+                } catch (IOException e) {
+                    Log.e("babysheets", e.toString());
+                }
+                return null;
             }
-        }catch (IOException e) {
-            Log.e("babysheets",e.toString());
-        }
+
+            @Override
+            protected void onPostExecute(Void aVoid) {
+                updateNotification();
+            }
+        };
+        task.execute();
     }
 
-    private void saveData() {
+    /*private void saveData() {
         SharedPreferences settings =
                 getSharedPreferences(PREF, Context.MODE_PRIVATE);
         SharedPreferences.Editor editor = settings.edit();
@@ -326,7 +352,7 @@ public class MyService extends IntentService {
         lastFeed[1] = new Date(p.getLong("lastFeedEnd", 0));
         lastSleep[0] = new Date(p.getLong("lastSleepStart", 0));
         lastSleep[1] = new Date(p.getLong("lastSleepEnd", 0));
-    }
+    }*/
 
     public static Date parseDate(List<Object> obj) {
         String s = obj.get(0) + " " + obj.get(1);
@@ -351,30 +377,55 @@ public class MyService extends IntentService {
         }
     }
 
-    private void sheetsAddData(String type) {
+    private void sheetsAddData(final String type) {
 
-        try {
+        AsyncTask<Void, Void, Void> task = new AsyncTask<Void, Void, Void>() {
 
-            DateFormat dateFormat = new SimpleDateFormat("dd.MM.yyyy HH:mm:ss");
-            Object dateString = dateFormat.format(date);
-            List<List<Object>> values = Arrays.asList(
-                    Arrays.asList(
-                            dateString,
-                            "",
-                            type,
-                            "",
-                            ""
-                    )
-            );
-            ValueRange body = new ValueRange()
-                    .setValues(values);
-            AppendValuesResponse result = mService.spreadsheets()
-                    .values().append(SPREADSHEET_ID, SPREADSHEET_RANGE, body)
-                    .setValueInputOption("RAW")
-                    .execute();
-        } catch (IOException e) {
-            Log.e("babysheets",e.getMessage());
-        }
+            @Override
+            protected Void doInBackground(Void... params) {
+                try {
+
+                    DateFormat dateFormat = new SimpleDateFormat("dd.MM.yyyy HH:mm:ss");
+                    Object dateString = dateFormat.format(date);
+                    List<List<Object>> values = Collections.singletonList(
+                            Arrays.asList(
+                                    dateString,
+                                    "",
+                                    type,
+                                    "",
+                                    ""
+                            )
+                    );
+                    ValueRange body = new ValueRange()
+                            .setValues(values);
+                    AppendValuesResponse result = mService.spreadsheets()
+                            .values().append(SPREADSHEET_ID, SPREADSHEET_RANGE, body)
+                            .setValueInputOption("RAW")
+                            .execute();
+                } catch (IOException e) {
+                    Log.e("babysheets", e.getMessage());
+                }
+                return null;
+            }
+            @Override
+            protected void onPostExecute(Void aVoid) {
+                refreshMainActivity();
+                sendFirebase(context);
+                sheetsGetData();
+            }
+        };
+        task.execute();
+    }
+    @Override
+    public IBinder onBind(Intent intent) {
+        // Used only in case if services are bound (Bound Services).
+        return null;
+    }
+
+    @Override
+    public void onDestroy() {
+        super.onDestroy();
+        Log.i(TAG, "MyService onDestroy");
     }
 
 }

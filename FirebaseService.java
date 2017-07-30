@@ -1,15 +1,12 @@
 package com.eerovil.babysheets;
 
-import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
-import android.os.IBinder;
 import android.util.Log;
 
 import com.google.firebase.messaging.FirebaseMessagingService;
 import com.google.firebase.messaging.RemoteMessage;
 
-import static android.content.ContentValues.TAG;
 import static com.eerovil.babysheets.MainActivity.PREF;
 import static com.eerovil.babysheets.MainActivity.PREF_FIREBASE_TOKEN;
 import static com.eerovil.babysheets.MyService.GETDATA;

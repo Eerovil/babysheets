@@ -4,12 +4,9 @@ import android.content.Context;
 import android.content.SharedPreferences;
 import android.util.Log;
 
-import com.google.firebase.FirebaseApp;
 import com.google.firebase.iid.FirebaseInstanceId;
 import com.google.firebase.iid.FirebaseInstanceIdService;
-import com.google.firebase.iid.zzj;
 
-import static android.content.ContentValues.TAG;
 import static com.eerovil.babysheets.MainActivity.PREF;
 import static com.eerovil.babysheets.MainActivity.PREF_FIREBASE_TOKEN;
 

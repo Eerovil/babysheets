@@ -3,11 +3,9 @@ package com.eerovil.babysheets;
 import android.Manifest;
 import android.accounts.AccountManager;
 import android.app.Activity;
-import android.app.AlarmManager;
 import android.app.DatePickerDialog;
 import android.app.Dialog;
 import android.app.Notification;
-import android.app.PendingIntent;
 import android.app.ProgressDialog;
 import android.app.TimePickerDialog;
 import android.content.BroadcastReceiver;
@@ -49,6 +47,7 @@ import com.google.api.client.util.ExponentialBackOff;
 import com.google.api.services.sheets.v4.SheetsScopes;
 import com.google.api.services.sheets.v4.model.BatchUpdateSpreadsheetRequest;
 import com.google.api.services.sheets.v4.model.BatchUpdateSpreadsheetResponse;
+import com.google.api.services.sheets.v4.model.ChartData;
 import com.google.api.services.sheets.v4.model.DeleteDimensionRequest;
 import com.google.api.services.sheets.v4.model.DimensionRange;
 import com.google.api.services.sheets.v4.model.Request;
@@ -72,9 +71,9 @@ import pub.devrel.easypermissions.AfterPermissionGranted;
 import pub.devrel.easypermissions.EasyPermissions;
 
 import static com.eerovil.babysheets.MyService.GETDATA;
-import static com.eerovil.babysheets.MyService.REFRESH;
 import static com.eerovil.babysheets.MyService.SPREADSHEET_ID;
 import static com.eerovil.babysheets.MyService.SPREADSHEET_RANGE;
+import static com.eerovil.babysheets.MyService.STARTSERVICE;
 import static com.eerovil.babysheets.MyService.parseDate;
 import static com.eerovil.babysheets.MyService.sendFirebase;
 import static com.eerovil.babysheets.MyService.timeDiff;
@@ -82,29 +81,28 @@ import static com.eerovil.babysheets.MyService.timeDiff;
 public class MainActivity extends Activity
         implements EasyPermissions.PermissionCallbacks {
 
-    GoogleAccountCredential mCredential;
+    private GoogleAccountCredential mCredential;
     private com.google.api.services.sheets.v4.Sheets mService;
-    private TextView mOutputText;
     private Button mButton;
     private Notification nStatus;
-    ProgressDialog mProgress;
+    private ProgressDialog mProgress;
     ArrayAdapter mAdapter;
 
-    static final int REQUEST_ACCOUNT_PICKER = 1000;
-    static final int REQUEST_AUTHORIZATION = 1001;
-    static final int REQUEST_GOOGLE_PLAY_SERVICES = 1002;
-    static final int REQUEST_PERMISSION_GET_ACCOUNTS = 1003;
+    private static final int REQUEST_ACCOUNT_PICKER = 1000;
+    private static final int REQUEST_AUTHORIZATION = 1001;
+    private static final int REQUEST_GOOGLE_PLAY_SERVICES = 1002;
+    private static final int REQUEST_PERMISSION_GET_ACCOUNTS = 1003;
 
-    public static final String TAG = "MainActivity";
+    private static final String TAG = "MainActivity";
 
     private static final String BUTTON_TEXT = "Call Google Sheets API";
-    public static final String PREF_ACCOUNT_NAME = "accountName";
+    private static final String PREF_ACCOUNT_NAME = "accountName";
     public static final String PREF_FIREBASE_TOKEN = "firebasetoken";
     public static final String PREF = "pref";
     private static final String[] SCOPES = { SheetsScopes.SPREADSHEETS };
 
     private ListView listMain;
-    private ArrayList<MyListItem> listItems = new ArrayList<>();
+    private final ArrayList<MyListItem> listItems = new ArrayList<>();
     private MyListItemAdapter listAdapter;
 
     private BroadcastReceiver receiver;
@@ -157,6 +155,7 @@ public class MainActivity extends Activity
                 view.getContext().startActivity(intent);
             }
         });
+
         // Initialize credentials and service object.
         mCredential = GoogleAccountCredential.usingOAuth2(
                 getApplicationContext(), Arrays.asList(SCOPES))
@@ -164,7 +163,7 @@ public class MainActivity extends Activity
 
         getResultsFromApi();
 
-        refreshNotification();
+        startService();
 
         /*AlarmManager am = (AlarmManager) getSystemService(ALARM_SERVICE);
         Intent intent = new Intent(this, MyService.class);
@@ -219,6 +218,13 @@ public class MainActivity extends Activity
         startService(serviceintent);
         Log.e(TAG,"Sent service GETDATA");
     }
+    private void startService() {
+        Intent serviceintent = new Intent(this, MyService.class);
+        serviceintent.setAction(STARTSERVICE);
+        startService(serviceintent);
+        Log.e(TAG,"Sent service STARTSERVICE");
+    }
+
 
     private void showLoading(String message) {
         mProgress.setMessage(message);
@@ -246,7 +252,7 @@ public class MainActivity extends Activity
         } else if (mCredential.getSelectedAccountName() == null) {
             chooseAccount();
         } else if (! isDeviceOnline()) {
-            mOutputText.setText("No network connection available.");
+            Log.e(TAG,"No network connection available.");
         } else {
             tryGet();
         }
@@ -267,10 +273,9 @@ public class MainActivity extends Activity
                         .build();
 
                 try {
-                    ValueRange response = mService.spreadsheets().values()
+                    return mService.spreadsheets().values()
                             .get(SPREADSHEET_ID, SPREADSHEET_RANGE)
                             .execute();
-                    return response;
 
                 } catch (UserRecoverableAuthIOException a) {
                     startActivity(a.getIntent());
@@ -304,7 +309,7 @@ public class MainActivity extends Activity
                     }
                     if (item.type.contains("sleep")){
                         if (lastSleep != null)
-                            item.setTimeSince(lastFeed);
+                            item.setTimeSince(lastSleep);
                         lastSleep = item.date;
                     }
                 }
@@ -315,7 +320,7 @@ public class MainActivity extends Activity
         task.execute();
     }
 
-    public class ListCompare implements Comparator<MyListItem> {
+    private class ListCompare implements Comparator<MyListItem> {
         @Override
         public int compare(MyListItem o1, MyListItem o2) {
             return (o1.date).compareTo(o2.date);
@@ -332,10 +337,10 @@ public class MainActivity extends Activity
         return null;
     }
 
-    private class MyListItem {
-        public String type;
+    public class MyListItem {
+        public final String type;
         public Date date;
-        public int position;
+        public final int position;
         public String timesince;
 
         public MyListItem(int position, Date date, String type) {
@@ -436,8 +441,8 @@ public class MainActivity extends Activity
                     ValueRange range = new ValueRange();
                     DateFormat dateFormat = new SimpleDateFormat("dd.MM.yyyy HH:mm:ss");
                     Object dateString = dateFormat.format(itemDate.getTime());
-                    List<List<Object>> values = Arrays.asList(
-                            Arrays.asList(
+                    List<List<Object>> values = Collections.singletonList(
+                            Collections.singletonList(
                                     dateString
                             )
                     );
@@ -473,7 +478,7 @@ public class MainActivity extends Activity
                 Log.d(TAG, "selected new date " + itemDate.toString());
 
                 Integer[] row = {listItems.get(id.intValue()).position, id.intValue()};
-                showLoading("Poistetaan...");
+                showLoading("Muokataan...");
                 item.date = itemDate.getTime();
                 task.execute(row);
             }
@@ -511,13 +516,13 @@ public class MainActivity extends Activity
 
                 try {
                     BatchUpdateSpreadsheetRequest content = new BatchUpdateSpreadsheetRequest();
-                    content.setRequests(Arrays.asList(
+                    content.setRequests(Collections.singletonList(
                             new Request().setDeleteDimension(new DeleteDimensionRequest()
-                            .setRange(new DimensionRange()
-                            .setDimension("ROWS")
-                            .setStartIndex(index)
-                            .setEndIndex(index + 1)
-                            .setSheetId(0)))
+                                    .setRange(new DimensionRange()
+                                            .setDimension("ROWS")
+                                            .setStartIndex(index)
+                                            .setEndIndex(index + 1)
+                                            .setSheetId(0)))
                     ));
                     BatchUpdateSpreadsheetResponse response = mService.spreadsheets()
                             .batchUpdate(SPREADSHEET_ID,content)
@@ -602,7 +607,7 @@ public class MainActivity extends Activity
         switch(requestCode) {
             case REQUEST_GOOGLE_PLAY_SERVICES:
                 if (resultCode != RESULT_OK) {
-                    mOutputText.setText(
+                    Log.e(TAG,
                             "This app requires Google Play Services. Please install " +
                                     "Google Play Services on your device and relaunch this app.");
                 } else {
@@ -720,7 +725,7 @@ public class MainActivity extends Activity
      * @param connectionStatusCode code describing the presence (or lack of)
      *     Google Play Services on this device.
      */
-    void showGooglePlayServicesAvailabilityErrorDialog(
+    private void showGooglePlayServicesAvailabilityErrorDialog(
             final int connectionStatusCode) {
         GoogleApiAvailability apiAvailability = GoogleApiAvailability.getInstance();
         Dialog dialog = apiAvailability.getErrorDialog(
