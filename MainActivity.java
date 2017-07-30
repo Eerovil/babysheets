@@ -4,10 +4,12 @@ import android.Manifest;
 import android.accounts.AccountManager;
 import android.app.Activity;
 import android.app.AlarmManager;
+import android.app.DatePickerDialog;
 import android.app.Dialog;
 import android.app.Notification;
 import android.app.PendingIntent;
 import android.app.ProgressDialog;
+import android.app.TimePickerDialog;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
@@ -30,8 +32,10 @@ import android.view.ViewGroup;
 import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
 import android.widget.Button;
+import android.widget.DatePicker;
 import android.widget.ListView;
 import android.widget.TextView;
+import android.widget.TimePicker;
 
 import com.google.android.gms.common.ConnectionResult;
 import com.google.android.gms.common.GoogleApiAvailability;
@@ -48,14 +52,17 @@ import com.google.api.services.sheets.v4.model.BatchUpdateSpreadsheetResponse;
 import com.google.api.services.sheets.v4.model.DeleteDimensionRequest;
 import com.google.api.services.sheets.v4.model.DimensionRange;
 import com.google.api.services.sheets.v4.model.Request;
+import com.google.api.services.sheets.v4.model.UpdateValuesResponse;
 import com.google.api.services.sheets.v4.model.ValueRange;
 import com.google.firebase.iid.FirebaseInstanceId;
 import com.google.firebase.messaging.FirebaseMessaging;
 
 import java.io.IOException;
+import java.text.DateFormat;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Calendar;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.Date;
@@ -399,8 +406,91 @@ public class MainActivity extends Activity
                 return super.onContextItemSelected(item);
         }
     }
-    private void editItem(Long id) {
+    private void editItem(final Long id) {
+        final MyListItem item = listItems.get(id.intValue());
 
+        final Calendar itemDate = Calendar.getInstance();
+        itemDate.setTime(item.date);
+        int mYear = itemDate.get(Calendar.YEAR);
+        int mMonth = itemDate.get(Calendar.MONTH);
+        int mDay = itemDate.get(Calendar.DAY_OF_MONTH);
+        int mHour = itemDate.get(Calendar.HOUR_OF_DAY);
+        int mMinute = itemDate.get(Calendar.MINUTE);
+
+        final AsyncTask<Integer, Void, Void> task = new AsyncTask<Integer, Void, Void>() {
+            Integer index;
+            int listIndex;
+            @Override
+            protected Void doInBackground(Integer... params) {
+                index = params[0];
+                listIndex = params[1];
+
+                HttpTransport transport = AndroidHttp.newCompatibleTransport();
+                JsonFactory jsonFactory = JacksonFactory.getDefaultInstance();
+                mService = new com.google.api.services.sheets.v4.Sheets.Builder(
+                        transport, jsonFactory, mCredential)
+                        .setApplicationName("Google Sheets API Android Quickstart")
+                        .build();
+
+                try {
+                    ValueRange range = new ValueRange();
+                    DateFormat dateFormat = new SimpleDateFormat("dd.MM.yyyy HH:mm:ss");
+                    Object dateString = dateFormat.format(itemDate.getTime());
+                    List<List<Object>> values = Arrays.asList(
+                            Arrays.asList(
+                                    dateString
+                            )
+                    );
+                    range.setValues(values);
+                    UpdateValuesResponse response = mService.spreadsheets()
+                            .values()
+                            .update(SPREADSHEET_ID, "tietokanta!A" + (index + 1), range)
+                            .setValueInputOption("RAW")
+                            .execute();
+                    Log.d(TAG,response.toString());
+
+
+                } catch (UserRecoverableAuthIOException a) {
+                    startActivity(a.getIntent());
+                } catch (IOException e) {
+                    Log.e(TAG,e.toString());
+                }
+                return null;
+            }
+
+            @Override
+            protected void onPostExecute(Void v) {
+                getResultsFromApi();
+                sendFirebase(context);
+            }
+        };
+
+        final TimePickerDialog timeDialog = new TimePickerDialog(this, new TimePickerDialog.OnTimeSetListener() {
+            @Override
+            public void onTimeSet(TimePicker timePicker, int selectedHour, int selectedMinute) {
+                itemDate.set(Calendar.HOUR_OF_DAY, selectedHour);
+                itemDate.set(Calendar.MINUTE, selectedMinute);
+                Log.d(TAG, "selected new date " + itemDate.toString());
+
+                Integer[] row = {listItems.get(id.intValue()).position, id.intValue()};
+                showLoading("Poistetaan...");
+                item.date = itemDate.getTime();
+                task.execute(row);
+            }
+        }, mHour, mMinute, true);
+        DatePickerDialog dateDialog = new DatePickerDialog(this, new DatePickerDialog.OnDateSetListener() {
+            @Override
+            public void onDateSet(DatePicker datePicker, int newYear, int newMonth, int newDay) {
+                itemDate.set(Calendar.YEAR, newYear);
+                itemDate.set(Calendar.MONTH, newMonth);
+                itemDate.set(Calendar.DAY_OF_MONTH, newDay);
+                timeDialog.show();
+            }
+        }, mYear, mMonth, mDay);
+
+
+
+        dateDialog.show();
     }
 
     private void deleteItem(Long id) {
