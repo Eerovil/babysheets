@@ -5,9 +5,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.util.Log;
 
-import static android.content.ContentValues.TAG;
 import static com.eerovil.babysheets.MyService.CUSTOM;
-import static com.eerovil.babysheets.MyService.REFRESH;
 
 public class MainReceiver extends BroadcastReceiver {
     private static final String TAG = "MainReceiver";
