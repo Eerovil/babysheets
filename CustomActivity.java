@@ -17,69 +17,49 @@ import static com.eerovil.babysheets.MyService.SLEEPEND;
 import static com.eerovil.babysheets.MyService.SLEEPSTART;
 
 
-public class CustomActivity extends AppCompatActivity {
+public class CustomActivity extends AppCompatActivity implements View.OnClickListener {
     private static final String TAG = "CustomActivity";
-
+    private Button bFeedStart;
+    private Button bFeedEnd;
+    private Button bSleepStart;
+    private Button bSleepEnd;
+    private TimePicker timePicker;
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_custom);
 
-        final TimePicker timePicker = (TimePicker) findViewById(R.id.timePicker);
+        timePicker = (TimePicker) findViewById(R.id.timePicker);
         timePicker.setIs24HourView(true);
 
-        Button bFeedStart = (Button) findViewById(R.id.bFeedStart);
-        bFeedStart.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View view) {
-                Intent in = new Intent(view.getContext(), MyService.class);
-                in.setAction(FEEDSTART);
-                in.putExtra("hour", timePicker.getHour());
-                in.putExtra("minute", timePicker.getMinute());
-                view.getContext().startService(in);
-                finish();
-            }
-        });
+        bFeedStart = (Button) findViewById(R.id.bFeedStart);
+        bFeedStart.setOnClickListener(this);
 
-        Button bFeedEnd = (Button) findViewById(R.id.bFeedEnd);
-        bFeedEnd.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View view) {
-                Intent in = new Intent(view.getContext(), MyService.class);
-                in.setAction(FEEDEND);
-                in.putExtra("hour", timePicker.getHour());
-                in.putExtra("minute", timePicker.getMinute());
-                view.getContext().startService(in);
-                finish();
-            }
-        });
+        bFeedEnd = (Button) findViewById(R.id.bFeedEnd);
+        bFeedEnd.setOnClickListener(this);
 
-        Button bSleepStart = (Button) findViewById(R.id.bSleepStart);
-        bSleepStart.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View view) {
-                Intent in = new Intent(view.getContext(), MyService.class);
-                in.setAction(SLEEPSTART);
-                in.putExtra("hour", timePicker.getHour());
-                in.putExtra("minute", timePicker.getMinute());
-                view.getContext().startService(in);
-                finish();
-            }
-        });
+        bSleepStart = (Button) findViewById(R.id.bSleepStart);
+        bSleepStart.setOnClickListener(this);
 
-        Button bSleepEnd = (Button) findViewById(R.id.bSleepEnd);
-        bSleepEnd.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View view) {
-                Intent in = new Intent(view.getContext(), MyService.class);
-                in.setAction(SLEEPEND);
-                in.putExtra("hour", timePicker.getHour());
-                in.putExtra("minute", timePicker.getMinute());
-                view.getContext().startService(in);
-                finish();
-            }
-        });
+        bSleepEnd = (Button) findViewById(R.id.bSleepEnd);
+        bSleepEnd.setOnClickListener(this);
 
+    }
+
+    public void onClick(View view) {
+        timePicker.clearFocus();
+
+        Intent in = new Intent(view.getContext(), MyService.class);
+
+        if (view == bFeedStart) in.setAction(FEEDSTART);
+        if (view == bFeedEnd) in.setAction(FEEDEND);
+        if (view == bSleepStart) in.setAction(SLEEPSTART);
+        if (view == bSleepEnd) in.setAction(SLEEPEND);
+
+        in.putExtra("hour", timePicker.getHour());
+        in.putExtra("minute", timePicker.getMinute());
+        view.getContext().startService(in);
+        finish();
     }
 
 }

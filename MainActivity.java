@@ -613,6 +613,10 @@ public class MainActivity extends Activity
             unregisterReceiver(receiver);
             receiver = null;
         }
+        if (mProgress != null) {
+            mProgress.hide();
+            mProgress.cancel();
+        }
         super.onDestroy();
     }
 }
