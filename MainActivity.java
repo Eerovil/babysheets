@@ -108,6 +108,7 @@ public class MainActivity extends Activity
 
     private Context context;
 
+    public static final String SHEETS_DATE_FORMAT = "d.M.yyyy 'klo' HH.mm.ss";
 
     /**
      * Create the main activity.
@@ -431,7 +432,7 @@ public class MainActivity extends Activity
 
                 try {
                     ValueRange range = new ValueRange();
-                    DateFormat dateFormat = new SimpleDateFormat("dd.MM.yyyy HH:mm:ss");
+                    DateFormat dateFormat = new SimpleDateFormat(SHEETS_DATE_FORMAT);
                     Object dateString = dateFormat.format(itemDate.getTime());
                     List<List<Object>> values = Collections.singletonList(
                             Collections.singletonList(
@@ -442,7 +443,7 @@ public class MainActivity extends Activity
                     UpdateValuesResponse response = mService.spreadsheets()
                             .values()
                             .update(SPREADSHEET_ID, "tietokanta!A" + (index + 1), range)
-                            .setValueInputOption("RAW")
+                            .setValueInputOption("USER_ENTERED")
                             .execute();
                     Log.d(TAG,response.toString());
 

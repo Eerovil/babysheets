@@ -41,6 +41,7 @@ import static android.content.ContentValues.TAG;
 import static android.content.Intent.FLAG_INCLUDE_STOPPED_PACKAGES;
 import static com.eerovil.babysheets.MainActivity.PREF;
 import static com.eerovil.babysheets.MainActivity.PREF_FIREBASE_TOKEN;
+import static com.eerovil.babysheets.MainActivity.SHEETS_DATE_FORMAT;
 
 
 public class MyService extends IntentService {
@@ -217,9 +218,17 @@ public class MyService extends IntentService {
         return PendingIntent.getBroadcast(context, 0, intent, 0);
     }
 
-
-
+    private void createNotification(Exception e) {
+        createNotification(e.getClass().toString(), e.getMessage());
+    }
     private void createNotification() {
+        createNotification("Loading...", "");
+    }
+    private void createNotification(String titleText) {
+        createNotification(titleText, "");
+    }
+
+    private void createNotification(String titleText, String contentText) {
         boolean init = false;
         if (contentView == null) {
             init = true;
@@ -239,8 +248,8 @@ public class MyService extends IntentService {
             createNotificationHelper(init, contentView, "feed", lastFeed);
             createNotificationHelper(init, contentView, "sleep", lastSleep);
         } else {
-            contentView.setTextViewText(R.id.title, "Loading...");
-            contentView.setTextViewText(R.id.text, "");
+            contentView.setTextViewText(R.id.title, titleText);
+            contentView.setTextViewText(R.id.text, contentText);
             contentView.setTextViewText(R.id.feed_ago, "");
             contentView.setTextViewText(R.id.sleep_ago, "");
         }
@@ -250,6 +259,12 @@ public class MyService extends IntentService {
             getDataReceive.addFlags(FLAG_INCLUDE_STOPPED_PACKAGES);
             PendingIntent pendingIntentGetData = PendingIntent.getBroadcast(this, 12345, getDataReceive, PendingIntent.FLAG_UPDATE_CURRENT);
             contentView.setOnClickPendingIntent(R.id.b_refresh, pendingIntentGetData);
+
+            Intent refreshReceive = new Intent();
+            refreshReceive.setAction(REFRESH);
+            refreshReceive.addFlags(FLAG_INCLUDE_STOPPED_PACKAGES);
+            PendingIntent pendingIntentRefresh = PendingIntent.getBroadcast(this, 12345, refreshReceive, PendingIntent.FLAG_UPDATE_CURRENT);
+            contentView.setOnClickPendingIntent(R.id.textContainer, pendingIntentRefresh);
 
             Intent notificationIntent = new Intent(this, MainActivity.class);
             notificationIntent.setFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP
@@ -305,6 +320,7 @@ public class MyService extends IntentService {
             }
         }catch (IOException e) {
             Log.e("babysheets",e.toString());
+            createNotification(e);
         }
     }
 
@@ -331,7 +347,7 @@ public class MyService extends IntentService {
     public static Date parseDate(List<Object> obj) {
         String s = obj.get(0) + " " + obj.get(1);
         s = s.trim();
-        SimpleDateFormat dateFormat = new SimpleDateFormat("dd.MM.yyyy HH:mm:ss");
+        SimpleDateFormat dateFormat = new SimpleDateFormat(SHEETS_DATE_FORMAT);
         try {
             return dateFormat.parse(s);
         } catch (ParseException err) {
@@ -355,7 +371,7 @@ public class MyService extends IntentService {
 
         try {
 
-            DateFormat dateFormat = new SimpleDateFormat("dd.MM.yyyy HH:mm:ss");
+            DateFormat dateFormat = new SimpleDateFormat(SHEETS_DATE_FORMAT);
             Object dateString = dateFormat.format(date);
             List<List<Object>> values = Arrays.asList(
                     Arrays.asList(
@@ -370,10 +386,11 @@ public class MyService extends IntentService {
                     .setValues(values);
             AppendValuesResponse result = mService.spreadsheets()
                     .values().append(SPREADSHEET_ID, SPREADSHEET_RANGE, body)
-                    .setValueInputOption("RAW")
+                    .setValueInputOption("USER_ENTERED")
                     .execute();
         } catch (IOException e) {
             Log.e("babysheets",e.getMessage());
+            createNotification(e);
         }
     }
 
