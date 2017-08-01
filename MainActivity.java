@@ -533,10 +533,8 @@ public class MainActivity extends Activity
 
             @Override
             protected void onPostExecute(Void v) {
-                listItems.remove(listIndex);
-                listAdapter.notifyDataSetChanged();
+                getResultsFromApi();
                 refreshNotification();
-                hideLoading();
                 sendFirebase(context);
             }
         };

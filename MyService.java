@@ -4,10 +4,14 @@ import android.app.IntentService;
 import android.app.Notification;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
+import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.graphics.drawable.Icon;
+import android.os.AsyncTask;
+import android.os.IBinder;
+import android.support.annotation.IntDef;
 import android.support.annotation.Nullable;
 import android.support.v4.app.NotificationCompat;
 import android.util.Log;
@@ -44,7 +48,7 @@ import static com.eerovil.babysheets.MainActivity.PREF_FIREBASE_TOKEN;
 import static com.eerovil.babysheets.MainActivity.SHEETS_DATE_FORMAT;
 
 
-public class MyService extends IntentService {
+public class MyService extends Service {
     private static final String TAG = "MyService";
 
     public static final String FEEDSTART = "com.eerovil.babysheets.FEEDSTART";
@@ -65,6 +69,8 @@ public class MyService extends IntentService {
     private RemoteViews contentView;
     private NotificationCompat.Builder mBuilder;
 
+    private Context context;
+
 
     public static final String SPREADSHEET_ID = "19AkAs2dAkvHyvd3NR0Jpo5doqZBAJwEmK3hG5P-NE9A";
     public static final String SPREADSHEET_RANGE = "tietokanta!A1:F";
@@ -78,24 +84,12 @@ public class MyService extends IntentService {
 
     private com.google.api.services.sheets.v4.Sheets mService;
 
-    public MyService() {
-        super("MyService");
-    }
-
-    public MyService(String name) {
-        super(name);
-    }
-
     @Override
-    protected void onHandleIntent(@Nullable Intent intent) {
-        String action = null;
-        try {
-            action = intent.getAction();
-        } catch (Exception e) {
-            e.printStackTrace();
-            return;
-        }
+    public int onStartCommand(Intent intent, int flags, int startId) {
+
+        String action = intent.getAction();
         this.date = new Date();
+        this.context = this;
 
         if (intent.hasExtra("hour") && intent.hasExtra("minute")) {
             Calendar calendar = Calendar.getInstance();
@@ -122,7 +116,7 @@ public class MyService extends IntentService {
             Log.v("babysheets", "Using account " + accountName);
 
             if (accountName == null)
-                return;
+                return START_NOT_STICKY;
 
             mCredential.setSelectedAccountName(accountName);
 
@@ -134,22 +128,45 @@ public class MyService extends IntentService {
                     .build();
 
             lastFeed[0] = null;
-            createNotification();
+            createNotification("Loading...");
         }
 
         if (FEEDSTART.equals(action) ||FEEDEND.equals(action) || SLEEPEND.equals(action) || SLEEPSTART.equals(action)) {
-            sheetsAddData(action);
-            refreshMainActivity();
-            sendFirebase(this);
-        }
-
-        if (REFRESH.equals(action)) {
+            sheetsAddDataAsync(action, new MyCallback() {
+                @Override
+                public void run() {
+                    refreshMainActivity();
+                    sendFirebase(context);
+                    sheetsGetDataAsync(new MyCallback() {
+                        @Override
+                        public void run() {
+                            createNotification();
+                            stopSelf();
+                        }
+                    });
+                }
+            });
+        } else if (REFRESH.equals(action)) {
             loadData();
-        } else {
-            sheetsGetData();
+            createNotification();
+            stopSelf();
+        } else if (GETDATA.equals(action)){
+            sheetsGetDataAsync(new MyCallback() {
+                @Override
+                public void run() {
+                    createNotification();
+                    stopSelf();
+                }
+            });
         }
 
-        createNotification();
+        return START_NOT_STICKY;
+    }
+
+    @Nullable
+    @Override
+    public IBinder onBind(Intent intent) {
+        return null;
     }
 
     private void refreshMainActivity() {
@@ -300,6 +317,34 @@ public class MyService extends IntentService {
         return ret;
     }
 
+    interface MyCallback {
+        void run();
+    }
+
+    private class SheetsGetDataAsync extends AsyncTask<Void, Void, Void> {
+        final MyCallback callback;
+
+        SheetsGetDataAsync(MyCallback callback) {
+            this.callback = callback;
+        }
+
+        @Override
+        protected Void doInBackground(Void... voids) {
+            sheetsGetData();
+            return null;
+        }
+
+        @Override
+        protected void onPostExecute(Void aVoid) {
+            callback.run();
+        }
+
+    }
+
+    private void sheetsGetDataAsync(MyCallback callback) {
+        new SheetsGetDataAsync(callback).execute();
+    }
+
     private void sheetsGetData() {
         List<String> results = new ArrayList<>();
         try {
@@ -365,6 +410,30 @@ public class MyService extends IntentService {
                 }
             }
         }
+    }
+
+    private class SheetsAddDataAsync extends AsyncTask<Void, Void, Void> {
+        final MyCallback callback;
+        final String type;
+
+        SheetsAddDataAsync(String type, MyCallback callback) {
+            this.callback = callback;
+            this.type = type;
+        }
+        @Override
+        protected Void doInBackground(Void... voids) {
+            sheetsAddData(type);
+            return null;
+        }
+        @Override
+        protected void onPostExecute(Void aVoid) {
+            callback.run();
+        }
+
+    }
+
+    private void sheetsAddDataAsync(String type, MyCallback callback) {
+        new SheetsAddDataAsync(type, callback).execute();
     }
 
     private void sheetsAddData(String type) {
