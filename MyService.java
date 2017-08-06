@@ -53,6 +53,7 @@ public class MyService extends Service {
 
     public static final String FEEDSTART = "com.eerovil.babysheets.FEEDSTART";
     public static final String FEEDEND = "com.eerovil.babysheets.FEEDEND";
+    public static final String FEED = "com.eerovil.babysheets.FEED";
     public static final String SLEEPSTART = "com.eerovil.babysheets.SLEEPSTART";
     public static final String SLEEPEND = "com.eerovil.babysheets.SLEEPEND";
     public static final String GETDATA = "com.eerovil.babysheets.GETDATA";
@@ -131,7 +132,8 @@ public class MyService extends Service {
             createNotification("Loading...");
         }
 
-        if (FEEDSTART.equals(action) ||FEEDEND.equals(action) || SLEEPEND.equals(action) || SLEEPSTART.equals(action)) {
+        if (FEEDSTART.equals(action) ||FEEDEND.equals(action) || SLEEPEND.equals(action) || SLEEPSTART.equals(action)
+                || FEED.equals(action)) {
             sheetsAddDataAsync(action, new MyCallback() {
                 @Override
                 public void run() {
@@ -199,7 +201,7 @@ public class MyService extends Service {
         Intent tmpIntent = new Intent();
         String contentText;
         if (dates[0].before(dates[1])) {
-            tmpIntent.setAction(feed ? FEEDSTART : SLEEPSTART);
+            tmpIntent.setAction(feed ? FEED : SLEEPSTART);
             contentView.setImageViewResource(button, R.drawable.ic_play);
 
             contentText = endedText + dateFormat.format(dates[0])
@@ -209,7 +211,7 @@ public class MyService extends Service {
                     + timeDiff((feed ? dates[0] : dates[1])) + " sitten)");
 
         } else {
-            tmpIntent.setAction(feed ? FEEDEND : SLEEPEND);
+            tmpIntent.setAction(feed ? FEED : SLEEPEND);
             contentView.setImageViewResource(button, R.drawable.ic_stop);
             contentText = currentText + dateFormat.format(dates[0]) +
                     "-...";
@@ -300,6 +302,8 @@ public class MyService extends Service {
 
         mNotifyMgr.notify(mNotificationId, mBuilder.build());
 
+        Log.d(TAG, "Notification created");
+
     }
     public static String timeDiff(Date d1) {
         return timeDiff(d1, new Date());
@@ -336,7 +340,9 @@ public class MyService extends Service {
 
         @Override
         protected void onPostExecute(Void aVoid) {
-            callback.run();
+            if (callback != null) {
+                callback.run();
+            }
         }
 
     }
@@ -415,6 +421,13 @@ public class MyService extends Service {
     private class SheetsAddDataAsync extends AsyncTask<Void, Void, Void> {
         final MyCallback callback;
         final String type;
+        Date addDate;
+
+        SheetsAddDataAsync(String type, MyCallback callback, Date date) {
+            this.callback = callback;
+            this.type = type;
+            this.addDate = date;
+        }
 
         SheetsAddDataAsync(String type, MyCallback callback) {
             this.callback = callback;
@@ -422,21 +435,34 @@ public class MyService extends Service {
         }
         @Override
         protected Void doInBackground(Void... voids) {
-            sheetsAddData(type);
+            sheetsAddData(type, addDate);
             return null;
         }
         @Override
         protected void onPostExecute(Void aVoid) {
-            callback.run();
+            if (callback != null) {
+                callback.run();
+            }
         }
 
     }
 
     private void sheetsAddDataAsync(String type, MyCallback callback) {
-        new SheetsAddDataAsync(type, callback).execute();
+        if (FEED.equals(type)) {
+            new SheetsAddDataAsync(FEEDSTART, null).execute();
+            final Calendar datecal = Calendar.getInstance();
+            datecal.setTime(this.date);
+            datecal.add(Calendar.MINUTE, 10);
+            new SheetsAddDataAsync(FEEDEND, callback, datecal.getTime()).execute();
+        } else {
+            new SheetsAddDataAsync(type, callback).execute();
+        }
     }
 
-    private void sheetsAddData(String type) {
+    private void sheetsAddData(String type, Date date) {
+        if (date == null) {
+            date = this.date;
+        }
 
         try {
 
