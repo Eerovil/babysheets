@@ -59,6 +59,7 @@ public class MyService extends Service {
     public static final String GETDATA = "com.eerovil.babysheets.GETDATA";
     public static final String CUSTOM = "com.eerovil.babysheets.CUSTOM";
     public static final String REFRESH = "com.eerovil.babysheets.REFRESH";
+    public static final String STARTSERVICE = "com.eerovil.babysheets.STARTSERVICE";
 
     public static final String BUNDLECREDENTIAL = "mCredential";
 
@@ -81,9 +82,27 @@ public class MyService extends Service {
     private static final String PREF_ACCOUNT_NAME = "accountName";
     private static final String PREF = "pref";
 
+    public static boolean SERVICE_RUNNING = false;
+
     private Date date;
 
     private com.google.api.services.sheets.v4.Sheets mService;
+
+    public void startForeground() {
+        if (SERVICE_RUNNING) { return; }
+        initGoogle();
+        // Sets an ID for the notification
+        int mNotificationId = 1;
+        NotificationCompat.Builder builder = new NotificationCompat.Builder(this)
+                .setAutoCancel(false)
+                .setPriority(PRIORITY_MAX)
+                .setOngoing(true)
+                .setSmallIcon(R.drawable.n_icon);
+        startForeground(mNotificationId, builder.build());
+        SERVICE_RUNNING = true;
+        Log.d(TAG, "Started foreground");
+
+    }
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
@@ -105,29 +124,17 @@ public class MyService extends Service {
 
         Log.d(TAG,"Service " + action);
 
+        if (STARTSERVICE.equals(action)) {
+            startForeground();
+            return START_STICKY;
+        }
+        //Stop here if service is not running.
+        if (!SERVICE_RUNNING) {
+            Log.e(TAG, "Service not running, stopping here...");
+            return START_NOT_STICKY;
+        }
+
         if (!REFRESH.equals(action)) {
-
-            mCredential = GoogleAccountCredential.usingOAuth2(
-                    getApplicationContext(), Arrays.asList(SCOPES))
-                    .setBackOff(new ExponentialBackOff());
-
-            String accountName = getSharedPreferences(PREF, Context.MODE_PRIVATE)
-                    .getString(PREF_ACCOUNT_NAME, null);
-
-            Log.v("babysheets", "Using account " + accountName);
-
-            if (accountName == null)
-                return START_NOT_STICKY;
-
-            mCredential.setSelectedAccountName(accountName);
-
-            HttpTransport transport = AndroidHttp.newCompatibleTransport();
-            JsonFactory jsonFactory = JacksonFactory.getDefaultInstance();
-            mService = new com.google.api.services.sheets.v4.Sheets.Builder(
-                    transport, jsonFactory, mCredential)
-                    .setApplicationName("Google Sheets API Android Quickstart")
-                    .build();
-
             lastFeed[0] = null;
             createNotification("Loading...");
         }
@@ -143,7 +150,7 @@ public class MyService extends Service {
                         @Override
                         public void run() {
                             createNotification();
-                            stopSelf();
+                            //stopSelf();
                         }
                     });
                 }
@@ -151,18 +158,18 @@ public class MyService extends Service {
         } else if (REFRESH.equals(action)) {
             loadData();
             createNotification();
-            stopSelf();
+            //stopSelf();
         } else if (GETDATA.equals(action)){
             sheetsGetDataAsync(new MyCallback() {
                 @Override
                 public void run() {
                     createNotification();
-                    stopSelf();
+                    //stopSelf();
                 }
             });
         }
 
-        return START_NOT_STICKY;
+        return START_STICKY;
     }
 
     @Nullable
@@ -175,6 +182,31 @@ public class MyService extends Service {
         Intent intent = new Intent();
         intent.setAction("REFRESH");
         sendBroadcast(intent);
+    }
+
+    private void initGoogle() {
+        mCredential = GoogleAccountCredential.usingOAuth2(
+                getApplicationContext(), Arrays.asList(SCOPES))
+                .setBackOff(new ExponentialBackOff());
+
+        String accountName = getSharedPreferences(PREF, Context.MODE_PRIVATE)
+                .getString(PREF_ACCOUNT_NAME, null);
+
+        Log.v("babysheets", "Using account " + accountName);
+
+        if (accountName == null) {
+            Log.e(TAG, "No Account name specified for google");
+            return;
+        }
+
+        mCredential.setSelectedAccountName(accountName);
+
+        HttpTransport transport = AndroidHttp.newCompatibleTransport();
+        JsonFactory jsonFactory = JacksonFactory.getDefaultInstance();
+        mService = new com.google.api.services.sheets.v4.Sheets.Builder(
+                transport, jsonFactory, mCredential)
+                .setApplicationName("Google Sheets API Android Quickstart")
+                .build();
     }
 
     public static void sendFirebase(Context context) {
@@ -489,4 +521,10 @@ public class MyService extends Service {
         }
     }
 
+    @Override
+    public void onDestroy() {
+        super.onDestroy();
+        Log.d(TAG, "Destroyed MyService");
+        stopForeground(false);
+    }
 }

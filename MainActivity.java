@@ -3,9 +3,11 @@ package com.eerovil.babysheets;
 import android.Manifest;
 import android.accounts.AccountManager;
 import android.app.Activity;
+import android.app.AlarmManager;
 import android.app.DatePickerDialog;
 import android.app.Dialog;
 import android.app.Notification;
+import android.app.PendingIntent;
 import android.app.ProgressDialog;
 import android.app.TimePickerDialog;
 import android.content.BroadcastReceiver;
@@ -71,8 +73,10 @@ import pub.devrel.easypermissions.AfterPermissionGranted;
 import pub.devrel.easypermissions.EasyPermissions;
 
 import static com.eerovil.babysheets.MyService.GETDATA;
+import static com.eerovil.babysheets.MyService.REFRESH;
 import static com.eerovil.babysheets.MyService.SPREADSHEET_ID;
 import static com.eerovil.babysheets.MyService.SPREADSHEET_RANGE;
+import static com.eerovil.babysheets.MyService.STARTSERVICE;
 import static com.eerovil.babysheets.MyService.parseDate;
 import static com.eerovil.babysheets.MyService.sendFirebase;
 import static com.eerovil.babysheets.MyService.timeDiff;
@@ -125,7 +129,7 @@ public class MainActivity extends Activity
 
         Log.v(TAG,"Log start");
 
-
+        startMyService();
 
         listAdapter = new MyListItemAdapter(this, listItems);
 
@@ -165,13 +169,13 @@ public class MainActivity extends Activity
 
         refreshNotification();
 
-        /*AlarmManager am = (AlarmManager) getSystemService(ALARM_SERVICE);
+        AlarmManager am = (AlarmManager) getSystemService(ALARM_SERVICE);
         Intent intent = new Intent(this, MyService.class);
         intent.setAction(REFRESH);
         long frequency= 60 * 1000; // in ms
         PendingIntent piLoop = PendingIntent.getService(this, 0, intent, PendingIntent.FLAG_CANCEL_CURRENT);
         am.setRepeating(AlarmManager.RTC_WAKEUP, System.currentTimeMillis(), frequency, piLoop);
-        Log.d(TAG, "Set repeating alarm every " + frequency + " ms");*/
+        Log.d(TAG, "Set repeating alarm every " + frequency + " ms");
 
         IntentFilter filter = new IntentFilter();
         filter.addAction("REFRESH");
@@ -211,6 +215,12 @@ public class MainActivity extends Activity
 
     private void showData() {
 
+    }
+    private void startMyService() {
+        Intent serviceintent = new Intent(this, MyService.class);
+        serviceintent.setAction(STARTSERVICE);
+        startService(serviceintent);
+        Log.e(TAG,"Sent service STARTSERVICE");
     }
     private void refreshNotification() {
         Intent serviceintent = new Intent(this, MyService.class);
