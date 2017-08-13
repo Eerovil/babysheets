@@ -8,6 +8,7 @@ import android.widget.Button;
 import android.widget.TimePicker;
 
 
+import static com.eerovil.babysheets.MyService.FEED;
 import static com.eerovil.babysheets.MyService.FEEDEND;
 import static com.eerovil.babysheets.MyService.FEEDSTART;
 import static com.eerovil.babysheets.MyService.SLEEPEND;
@@ -18,6 +19,7 @@ public class CustomActivity extends AppCompatActivity implements View.OnClickLis
     private static final String TAG = "CustomActivity";
     private Button bFeedStart;
     private Button bFeedEnd;
+    private Button bFeedPlusTen;
     private Button bSleepStart;
     private Button bSleepEnd;
     private TimePicker timePicker;
@@ -28,6 +30,9 @@ public class CustomActivity extends AppCompatActivity implements View.OnClickLis
 
         timePicker = (TimePicker) findViewById(R.id.timePicker);
         timePicker.setIs24HourView(true);
+
+        bFeedPlusTen = (Button) findViewById(R.id.bFeedPlusTen);
+        bFeedPlusTen.setOnClickListener(this);
 
         bFeedStart = (Button) findViewById(R.id.bFeedStart);
         bFeedStart.setOnClickListener(this);
@@ -50,6 +55,7 @@ public class CustomActivity extends AppCompatActivity implements View.OnClickLis
 
         if (view == bFeedStart) in.setAction(FEEDSTART);
         if (view == bFeedEnd) in.setAction(FEEDEND);
+        if (view == bFeedPlusTen) in.setAction(FEED);
         if (view == bSleepStart) in.setAction(SLEEPSTART);
         if (view == bSleepEnd) in.setAction(SLEEPEND);
 
