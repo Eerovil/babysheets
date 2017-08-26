@@ -1,17 +1,14 @@
 package com.eerovil.babysheets;
 
-import android.app.IntentService;
-import android.app.Notification;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
-import android.graphics.drawable.Icon;
 import android.os.AsyncTask;
 import android.os.IBinder;
-import android.support.annotation.IntDef;
+import android.os.Parcel;
 import android.support.annotation.Nullable;
 import android.support.v4.app.NotificationCompat;
 import android.util.Log;
@@ -41,11 +38,10 @@ import java.util.List;
 import java.util.concurrent.TimeUnit;
 
 import static android.app.Notification.PRIORITY_MAX;
-import static android.content.ContentValues.TAG;
 import static android.content.Intent.FLAG_INCLUDE_STOPPED_PACKAGES;
-import static com.eerovil.babysheets.MainActivity.PREF;
 import static com.eerovil.babysheets.MainActivity.PREF_FIREBASE_TOKEN;
 import static com.eerovil.babysheets.MainActivity.SHEETS_DATE_FORMAT;
+import static com.eerovil.babysheets.MainActivity.ACCOUNT_NAME;
 
 
 public class MyService extends Service {
@@ -69,6 +65,7 @@ public class MyService extends Service {
     private Date[] lastSleep = new Date[2];
 
     private RemoteViews contentView;
+    private RemoteViews prevContent;
     private NotificationCompat.Builder mBuilder;
 
     private Context context;
@@ -106,8 +103,13 @@ public class MyService extends Service {
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
-
-        String action = intent.getAction();
+        String action = null;
+        try {
+            action = intent.getAction();
+        } catch (NullPointerException e) {
+            Log.e(TAG, "ERRRORRRR");
+            return START_NOT_STICKY;
+        }
         this.date = new Date();
         this.context = this;
 
@@ -135,8 +137,8 @@ public class MyService extends Service {
         }
 
         if (!REFRESH.equals(action)) {
-            lastFeed[0] = null;
-            createNotification("Loading...");
+            //lastFeed[0] = null;
+            createNotification("Loading");
         }
 
         if (FEEDSTART.equals(action) ||FEEDEND.equals(action) || SLEEPEND.equals(action) || SLEEPSTART.equals(action)
@@ -155,8 +157,10 @@ public class MyService extends Service {
                     });
                 }
             });
+            quickAddData(action);
+            createNotification("Loading");
         } else if (REFRESH.equals(action)) {
-            loadData();
+            quickLoadData();
             createNotification();
             //stopSelf();
         } else if (GETDATA.equals(action)){
@@ -189,17 +193,17 @@ public class MyService extends Service {
                 getApplicationContext(), Arrays.asList(SCOPES))
                 .setBackOff(new ExponentialBackOff());
 
-        String accountName = getSharedPreferences(PREF, Context.MODE_PRIVATE)
-                .getString(PREF_ACCOUNT_NAME, null);
+        //String ACCOUNT_NAME = getSharedPreferences(PREF, Context.MODE_PRIVATE)
+        //        .getString(PREF_ACCOUNT_NAME, null);
 
-        Log.v("babysheets", "Using account " + accountName);
+        Log.v("babysheets", "Using account " + ACCOUNT_NAME);
 
-        if (accountName == null) {
+        if (ACCOUNT_NAME == null) {
             Log.e(TAG, "No Account name specified for google");
             return;
         }
 
-        mCredential.setSelectedAccountName(accountName);
+        mCredential.setSelectedAccountName(ACCOUNT_NAME);
 
         HttpTransport transport = AndroidHttp.newCompatibleTransport();
         JsonFactory jsonFactory = JacksonFactory.getDefaultInstance();
@@ -219,6 +223,30 @@ public class MyService extends Service {
 
         } else {
             Log.e(TAG, "Error sending firebase: NO TOKEN");
+        }
+    }
+
+    private void quickAddData(String action) {
+        switch (action) {
+            case FEED:
+                lastFeed[0] = new Date();
+                final Calendar datecal = Calendar.getInstance();
+                datecal.setTime(this.date);
+                datecal.add(Calendar.MINUTE, 10);
+                lastFeed[1] = datecal.getTime();
+                break;
+            case FEEDSTART:
+                lastFeed[0] = new Date();
+                break;
+            case FEEDEND:
+                lastFeed[1] = new Date();
+                break;
+            case SLEEPSTART:
+                lastSleep[0] = new Date();
+                break;
+            case SLEEPEND:
+                lastSleep[1] = new Date();
+                break;
         }
     }
 
@@ -254,6 +282,7 @@ public class MyService extends Service {
 
         tmpIntent.addFlags(FLAG_INCLUDE_STOPPED_PACKAGES);
         PendingIntent tmpPendingIntent = PendingIntent.getBroadcast(this, 12345, tmpIntent, PendingIntent.FLAG_UPDATE_CURRENT);
+
         if (feed) {
             contentView.setOnClickPendingIntent(R.id.b_feed, tmpPendingIntent);
         } else {
@@ -273,7 +302,7 @@ public class MyService extends Service {
         createNotification(e.getClass().toString(), e.getMessage());
     }
     private void createNotification() {
-        createNotification("Loading...", "");
+        createNotification("", "");
     }
     private void createNotification(String titleText) {
         createNotification(titleText, "");
@@ -281,11 +310,11 @@ public class MyService extends Service {
 
     private void createNotification(String titleText, String contentText) {
         boolean init = false;
-        if (contentView == null) {
+        //if (contentView == null) {
             init = true;
             contentView = new RemoteViews(getPackageName(), R.layout.custom_push);
             contentView.setImageViewResource(R.id.b_refresh, R.drawable.ic_refresh);
-        }
+        //}
         Log.d(TAG, "createNotification, init = " + init);
 
 
@@ -298,12 +327,9 @@ public class MyService extends Service {
         if (lastFeed[0] != null) {
             createNotificationHelper(init, contentView, "feed", lastFeed);
             createNotificationHelper(init, contentView, "sleep", lastSleep);
-        } else {
-            contentView.setTextViewText(R.id.title, titleText);
-            contentView.setTextViewText(R.id.text, contentText);
-            contentView.setTextViewText(R.id.feed_ago, "");
-            contentView.setTextViewText(R.id.sleep_ago, "");
         }
+        contentView.setTextViewText(R.id.extraText, titleText + " " + contentText);
+
         if (init) {
             Intent getDataReceive = new Intent();
             getDataReceive.setAction(GETDATA);
@@ -317,7 +343,7 @@ public class MyService extends Service {
             PendingIntent pendingIntentRefresh = PendingIntent.getBroadcast(this, 12345, refreshReceive, PendingIntent.FLAG_UPDATE_CURRENT);
             contentView.setOnClickPendingIntent(R.id.textContainer, pendingIntentRefresh);
 
-            Intent notificationIntent = new Intent(this, MainActivity.class);
+            Intent notificationIntent = new Intent(this, CustomActivity.class);
             notificationIntent.setFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP
                     | Intent.FLAG_ACTIVITY_SINGLE_TOP);
             PendingIntent intent = PendingIntent.getActivity(this, 0,
@@ -333,8 +359,10 @@ public class MyService extends Service {
 
 
         mNotifyMgr.notify(mNotificationId, mBuilder.build());
+        Parcel p = Parcel.obtain();
+        contentView.writeToParcel(p, 0);
+        Log.d(TAG, String.format("Notification created with size %d", p.dataSize()));
 
-        Log.d(TAG, "Notification created");
 
     }
     public static String timeDiff(Date d1) {
@@ -418,7 +446,7 @@ public class MyService extends Service {
         editor.apply();
     }
 
-    private void loadData() {
+    private void quickLoadData() {
         SharedPreferences p = getSharedPreferences(PREF,Context.MODE_PRIVATE);
 
         lastFeed[0] = new Date(p.getLong("lastFeedStart", 0));

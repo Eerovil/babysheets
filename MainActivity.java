@@ -46,6 +46,7 @@ import com.google.api.client.http.HttpTransport;
 import com.google.api.client.json.JsonFactory;
 import com.google.api.client.json.jackson2.JacksonFactory;
 import com.google.api.client.util.ExponentialBackOff;
+import com.google.api.client.util.StreamingContent;
 import com.google.api.services.sheets.v4.SheetsScopes;
 import com.google.api.services.sheets.v4.model.BatchUpdateSpreadsheetRequest;
 import com.google.api.services.sheets.v4.model.BatchUpdateSpreadsheetResponse;
@@ -103,6 +104,8 @@ public class MainActivity extends Activity
     public static final String PREF_FIREBASE_TOKEN = "firebasetoken";
     public static final String PREF = "pref";
     private static final String[] SCOPES = { SheetsScopes.SPREADSHEETS };
+
+    public static final String ACCOUNT_NAME = "eero.vilpponen@gmail.com";
 
     private ListView listMain;
     private final ArrayList<MyListItem> listItems = new ArrayList<>();
@@ -572,6 +575,7 @@ public class MainActivity extends Activity
                 this, Manifest.permission.GET_ACCOUNTS)) {
             String accountName = getSharedPreferences(PREF,Context.MODE_PRIVATE)
                     .getString(PREF_ACCOUNT_NAME, null);
+            accountName = ACCOUNT_NAME;
             if (accountName != null) {
                 mCredential.setSelectedAccountName(accountName);
                 getResultsFromApi();
